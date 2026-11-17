@@ -185,7 +185,8 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 
 **Critérios de aceite:**
 - [x] Widevine disponível no WebView2 (`requestMediaKeySystemAccess` resolve). *17/11/2026: OK, Edge/WebView2 157, `com.widevine.alpha` SW_SECURE_CRYPTO, sem configuração.*
-- [ ] Toca 10 minutos seguidos, com troca de faixa e seek, sem erro de licença.
+- [x] Toca 10 minutos seguidos, com troca de faixa e seek, sem erro de licença.
+  *17/11/2026, **Chrome `--app` via `player.py`: aprovado.** Contador em 10 min tocando (~12 min de sessão), 0 erros, 3 idas e voltas da reprodução entre o Spotron e outros dispositivos (celular, iPad, PC), troca de faixa automática OK.*
   *17/11/2026, **WebView2: falhou.** O servidor de licença do Spotify (`/v1/widevine-license/v1/audio/license`) respondeu HTTP 403 em 13 de 14 pedidos; as faixas pulam com `playback_error`. O SDK carrega, o CDN entrega o áudio, só a licença é recusada (provável falta de assinatura VMP aceita pelo Spotify no WebView2).*
   ***Chrome `--app`: funcionou.** 4 de 4 licenças HTTP 200, 0 `playback_error`, troca de faixa, voltar e seek OK, qualidade boa segundo o usuário. Tocou ~4 min contínuos (o usuário encerrou antes dos 10 min).*
 - [x] Plano B validado: Chrome em `--app=http://127.0.0.1:8890/` com `--user-data-dir` próprio (`sdk/browser_serve.py`). Edge `--app` ainda não testado.
