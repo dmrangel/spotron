@@ -53,9 +53,14 @@ Resultado (17/11/2026): o Widevine existe no WebView2 157, mas **o Spotify recus
 ### Plano B: a mesma página no Chrome em modo app (funcionou)
 
 ```
-..\.venv\Scripts\python.exe browser_serve.py
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://127.0.0.1:8890/ --user-data-dir=%LOCALAPPDATA%\spotron-spike\chrome
+..\.venv\Scripts\python.exe player.py          (Chrome; --edge para o Edge; --debug liga o CDP em 9222)
 ```
+
+O `player.py` sobe o servidor local (página + token) e abre o Chrome em `--app` com perfil próprio
+e `--autoplay-policy=no-user-gesture-required`. O player inicia sozinho, o servidor vive enquanto a
+janela estiver aberta, o token é pedido com novas tentativas e o player reconecta em `not_ready`
+ou `authentication_error`: dá para levar a reprodução para outro dispositivo e trazer de volta
+quantas vezes quiser.
 
 Licença 4/4 HTTP 200, 0 erros, troca de faixa e seek OK. RAM: ~427 MB privados.
 

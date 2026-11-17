@@ -9,7 +9,7 @@ Player desktop leve para Windows que toca músicas do Spotify (conta Premium) co
 ## Objetivos
 
 1. **Estabilidade e leveza:** substituir o app oficial (que trava nesta máquina) por um app próprio. Meta de memória: < 250 MB com a UI aberta e tocando (inclui o processo Widevine do WebView2, ~55 MB).
-2. **Som:** EQ paramétrico multibanda, pré-amplificação, compressor/limitador, crossfeed para fones, importação de presets AutoEQ (no estilo do Neutron).
+2. **Som:** os efeitos do Neutron Music Player: EQ paramétrico e gráfico, correção AutoEQ, pré-amplificação, compressor/limitador, crossfeed para fones, Ambiophonic R.A.C.E. para caixas, loudness, alinhamento de tempo e outros (lista em "Efeitos de DSP").
 3. **Visual:** temas customizáveis (CSS), visualizador de áudio em tempo real.
 4. **Portabilidade futura:** o formato de presets de DSP deve ser independente da plataforma, para ser reaproveitado num futuro projeto Android separado.
 
@@ -247,9 +247,11 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
        { "type": "lowshelf", "freq": 105, "gain_db": 5.5, "q": 0.71 }
      ],
      "compressor": null,
-     "crossfeed": { "enabled": false, "level": "medium" }
+     "crossfeed": { "enabled": false, "cutoff_hz": 700, "level_db": 4.5 },
+     "ambiophonics": { "enabled": false, "delay_us": 70, "attenuation_db": 3.0, "low_hz": 250, "high_hz": 5000 }
    }
    ```
+   O formato cresce com os efeitos da seção "Efeitos de DSP (paridade com o Neutron)".
 5. Conversor preset JSON → config do CamillaDSP.
 6. Importador do formato paramétrico do AutoEQ (`Filter N: ON PK Fc X Hz Gain Y dB Q Z`).
 7. Proteção contra clipping: limiter no fim da cadeia, ligado por padrão.
@@ -260,6 +262,53 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 - [ ] Importar um preset AutoEQ real funciona.
 - [ ] Fechar o app não deixa o `camilladsp.exe` órfão.
 - [ ] Trocar o fone não deixa o app mudo.
+
+### Efeitos de DSP (paridade com o Neutron)
+
+Pedido do usuário (17/11/2026): oferecer os efeitos do Neutron Music Player. Lista levantada em
+neutroncode.com/apps/player, nas lojas e em reviews (vários parâmetros do Neutron não são públicos:
+conferir no app antes de copiar faixas de valores). **Os nomes de filtros do CamillaDSP abaixo
+precisam ser conferidos na 4.1.3 antes de implementar** (regra do CLAUDE.md).
+
+Todos os efeitos são opções do preset JSON, com liga/desliga, e viram blocos do pipeline do
+CamillaDSP. Ordem sugerida: correção (AutoEQ) → EQ do usuário → efeitos espaciais → dinâmica →
+volume/loudness → limiter.
+
+| Efeito (nome no Neutron) | O que faz | Como fazer no CamillaDSP | Fase |
+|---|---|---|---|
+| Parametric Equalizer | EQ por banda (até 130 bandas no Neutron), por canal | `Biquad` (Peaking, Lowshelf, Highshelf, Lowpass, Highpass, Bandpass, Notch, Allpass) e `BiquadCombo` (Butterworth/Linkwitz-Riley) | 2 |
+| Graphic EQ | EQ de bandas fixas com curvas prontas | `BiquadCombo` GraphicEqualizer (conferir) ou N `Peaking` fixos | 2 |
+| Frequency Response Correction | Correção AutoEQ de fones (e curvas do usuário para caixas) | Importador AutoEQ → `Biquad`; preset separado do EQ do usuário, os dois ativos ao mesmo tempo | 2 |
+| Preamp | Ganho antes do DSP (headroom) | `Gain` | 2 |
+| Compressor / Limiter | Compressão de dinâmica e teto de pico | Processor `Compressor`; filtro `Limiter` no fim (já ligado por padrão) | 2 |
+| Crossfeed (fones) | Mistura parte de um canal no outro, filtrado e atrasado (estilo bs2b: 700 Hz/4,5 dB, Chu Moy 700 Hz/6 dB, Jan Meier 650 Hz/9,5 dB) | `Mixer` + `Biquad` Lowpass + `Delay` no sinal cruzado | 2 |
+| **Ambiophonic R.A.C.E.** (caixas) | Cancelamento de crosstalk recursivo: cada canal recebe o oposto invertido, atrasado (60–120 µs, ~70 µs típico) e atenuado (2–4 dB), repetidamente; só na faixa ~250 Hz–5 kHz (graves e agudos passam direto) | O pipeline do CamillaDSP não tem realimentação: calcular a recursão truncada como 4 FIR curtos (L→L, R→L, L→R, R→R) e aplicar com `Mixer` + `Conv` (coeficientes gerados pelo app); banda limitada por crossover `BiquadCombo` | 2 |
+| Surround x Crossfeed | No Neutron um exclui o outro | Mesma regra na UI: R.A.C.E. para caixas, crossfeed para fones | 2 |
+| Adaptive Loudness Compensation | Compensação de loudness que depende do volume | Filtro `Loudness` ligado ao volume do CamillaDSP. **Exige que o volume do app seja o do CamillaDSP** (SDK fixo em 100%) | 2 |
+| Time Delay Alignment | Atraso (e atenuação) por canal para caixas a distâncias diferentes | `Delay` (ms ou amostras) + `Gain` por canal | 2 |
+| Speaker protection | Corte subsônico e ultrassônico | `Biquad` Highpass/Lowpass (ex.: Butterworth) | 2 |
+| Phase/Polarity inversion | Inverte a fase de um canal ou de todos | `Gain` com `inverted: true` | 2 |
+| Balance, Mono, troca L/R | Balanço, soma mono, inversão de canais | `Mixer` | 2 |
+| Pseudo-stereo | Estéreo artificial para faixas mono | `Mixer` + `Delay`/Allpass para descorrelacionar | 4 (baixa prioridade) |
+| Reverberator (I3DL2) | Reverb com presets | Não existe no CamillaDSP: aproximar com `Conv` de respostas ao impulso (IR) prontas | 4 (opcional) |
+| Dithering | Reduz erro de quantização | Filtro `Dither`; só faz sentido com saída inteira (WASAPI exclusivo S16/S24). Em shared (F32) fica desligado | 4 (opcional) |
+| Oversampling / resampler | Qualidade da reamostragem | Perfil do `AsyncSinc` (VeryFast…Accurate) nas configurações | 2 |
+| Pitch e Tempo | Muda velocidade/tom | **Não dá**: a velocidade é do SDK do Spotify e o CamillaDSP não faz time-stretch | fora |
+
+Não são DSP no nosso caso: gapless e crossfade (controlados pelo Spotify), ReplayGain/normalização
+(o Spotify normaliza no servidor; conferir se o SDK expõe), bit-perfect, DSD, Chromecast/UPnP
+(fora do escopo). Analisadores de espectro/RMS entram no visualizador da Fase 4.
+
+**Critérios de aceite dos efeitos (junto com a Fase 2):**
+- [ ] Cada efeito liga/desliga ao vivo via WebSocket, sem cortar a música.
+- [ ] R.A.C.E.: com sinal só no canal esquerdo, ajustar delay/atenuação deixa a imagem toda à esquerda (método de calibração de Glasgal); sem clipping com o limiter ligado.
+- [ ] Crossfeed: os três presets bs2b audíveis e sem clipping.
+- [ ] Loudness acompanha o volume do app.
+
+Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
+[motor de áudio do Neutron](https://neutroncode.com/technology/79-audio-engine),
+[Glasgal & Miller, RACE (2007)](https://filmaker.com/papers/RGRM-RACE_rev.pdf),
+[bs2b](https://bs2b.sourceforge.net/).
 
 ### Fase 3: Interface e navegação
 
@@ -303,4 +352,5 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 | 2026-11-17 | ~~SDK tocando dentro do WebView2 do Tauri.~~ **Descartado.** | Widevine existe no WebView2 157, mas o Spotify responde 403 na licença (13/14). |
 | 2026-11-17 | **Tauri 2 para a UI + Chrome em modo `--app` (perfil próprio) para tocar o SDK.** | No Chrome a licença passa (4/4 HTTP 200, 0 erros, troca de faixa e seek OK). O Tauri controla a janela de reprodução via página local e Web API. Custo: ~430 MB privados, a otimizar; testar Edge `--app` como alternativa já instalada em todo Windows. |
 | 2026-11-17 | Spike C aprovado: OAuth PKCE, refresh e Web API. | 11/11 chamadas OK. Busca limitada a 10 por página (`limit=20` → 400), `offset` pagina. Itens de playlist seguida (não própria) vieram normalmente. Python precisa do `truststore` (CA "Certainly" do accounts.spotify.com). |
+| 2026-11-17 | Efeitos do Neutron entram no plano (Fase 2, alguns na 4), incluindo o Ambiophonic R.A.C.E. pedido como "AmbioRace". Pitch/tempo fica fora. | Pedido do usuário. R.A.C.E. vira FIR truncado (o CamillaDSP não tem realimentação no pipeline). |
 | 2026-11-17 | Deezer (pleezer) considerado e deixado como alternativa. | O usuário prefere ficar no Spotify; o Deezer volta à mesa se o Spike A falhar sem plano B viável. |
