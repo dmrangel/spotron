@@ -1,48 +1,53 @@
-# Fase 0: spike da cadeia de áudio
+# Fase 0: spikes da cadeia (Web Playback SDK → VB-CABLE → CamillaDSP)
 
-Objetivo: provar `librespot → pipe → CamillaDSP → WASAPI` numa máquina Windows real.
-Nada aqui roda no Linux/CI: precisa de placa de som, conta Premium e o app do Spotify no celular.
+Objetivo: provar nesta máquina Windows as três peças que podem inviabilizar o projeto.
+Critérios de aceite completos em `PLANO.md` (Fase 0). A tentativa anterior com o librespot
+está em `spikes/arquivo/librespot/` (bloqueada pelo Spotify).
 
-Versões alvo (conferidas em 17/11/2026):
+Nada aqui roda no Linux/CI: precisa de Windows, Widevine, VB-CABLE e conta Premium.
 
-| Componente | Versão | Fonte |
-|---|---|---|
-| librespot | 0.8.0 (crates.io, nov/2025) | `cargo install librespot --locked` |
-| CamillaDSP | 4.1.3 (última estável; 5.0 ainda é beta) | `camilladsp-windows-amd64.zip` nos releases do GitHub |
+## Pré-requisitos (feitos pelo usuário)
 
-## Passo a passo
+1. **App de desenvolvedor do Spotify** em <https://developer.spotify.com/dashboard>, com a conta Premium:
+   - Redirect URI: `http://127.0.0.1:8888/callback` (o Spotify não aceita `localhost`).
+   - APIs: Web API e Web Playback SDK.
+   - User Management: adicionar a própria conta.
+   - Anotar só o **Client ID** (o fluxo PKCE não usa o client secret; não commitar nada disso).
+2. **VB-CABLE** (<https://vb-audio.com/Cable/>): instalar como administrador e reiniciar.
+   No Painel de Som, pôr "CABLE Input" (Reprodução) e "CABLE Output" (Gravação) em
+   **48000 Hz, 2 canais** (Propriedades > Avançado). Manter os fones como saída padrão.
+3. Já prontos nesta máquina: `camilladsp.exe` 4.1.3 nesta pasta e `.venv` com `websockets`.
 
-1. **Rust MSVC**: instale o `rustup` e as "Build Tools for Visual Studio" (C++). O librespot 0.8 exige Rust ≥ 1.85.
-2. **librespot**: `cargo install librespot --locked --version 0.8.0`. O build padrão traz `native-tls`, `rodio` e `libmdns`, sem CMake nem NASM.
-3. **CamillaDSP**: baixe `camilladsp-windows-amd64.zip` da release v4.1.3 e coloque o `camilladsp.exe` nesta pasta ou no PATH. Todas as builds já trazem o servidor WebSocket.
-4. **Taxa do dispositivo**: em Painel de Som > dispositivo > Propriedades > Avançado, veja o "Formato padrão".
-   - 48000 Hz: use o `fase0.yml` como está (ele reamostra de 44100 para 48000).
-   - 44100 Hz: edite o `fase0.yml` conforme o comentário do topo.
-5. **Rodar**: abra o **cmd.exe** (não o PowerShell 5) nesta pasta e execute `run.cmd`.
-   Aceite o prompt do Firewall do Windows: sem ele o mDNS não anuncia o dispositivo.
-6. No app do Spotify (celular), escolha o dispositivo **"Spotron Fase0"** e toque algo.
-   O passa-baixa de 500 Hz já vem ativo, então o som deve sair abafado. Esse é o teste do filtro audível.
-7. Em outro terminal, rode `pip install websockets` e depois `python ws_test.py`.
-   O script troca o passa-baixa entre 500 Hz e 20 kHz e varre um peaking em 1 kHz, mostrando a latência de cada comando.
+## Spike A: Web Playback SDK no WebView2 (Tauri mínimo)
 
-## O que observar e anotar (critérios de aceite)
+Código a escrever na próxima etapa (`spikes/fase0/sdk/`): página Tauri mínima que carrega o SDK,
+mostra o resultado de `requestMediaKeySystemAccess('com.widevine.alpha')` e loga os erros do SDK.
 
-- [ ] 10 min sem estalos. Se estalar, suba `chunksize` para 2048 e depois 4096, e anote o valor que funcionou.
-- [ ] Filtro audível (passo 6).
-- [ ] Troca via WebSocket sem interromper a música (passo 7), com a latência anotada.
-- [ ] Formato: o `librespot.log` deve mostrar `S16`, e o `camilladsp.log` deve mostrar capture 44100 / playback 48000 (ou 44100).
+Teste: tocar pelo celular (dispositivo **"Spotron Fase0"**) por 10 minutos, com troca de faixa e seek.
 
-## Testes extras (riscos que o plano não cobria)
+## Spike B: VB-CABLE → CamillaDSP → fones
 
-- **Pause longo**: pause por 1 minuto e retome. No backend `pipe`, o librespot simplesmente para de escrever no stdout. Verifique se o CamillaDSP sobrevive (procure underrun ou erro no `camilladsp.log`) e se o áudio volta sozinho.
-- **Pular faixa / seek**: deve continuar sem estalos e sem reiniciar o processo.
-- **Trocar a saída padrão** (ex.: plugar um fone): anote o que acontece com `device: null`.
-- **RAM**: anote a memória do `librespot.exe` e do `camilladsp.exe` no Gerenciador de Tarefas.
+1. Com o app do Spike A tocando, abrir Configurações > Sistema > Som > Mixer de volume e pôr a
+   saída do app em **"CABLE Input (VB-Audio Virtual Cable)"**. Anotar qual processo aparece
+   (provavelmente `msedgewebview2.exe`) e se outros apps foram afetados.
+   Para um teste antes do Spike A: rotear o navegador (Opera) tocando o open.spotify.com.
+2. No **cmd.exe**, nesta pasta: `run_camilladsp.cmd`.
+   O passa-baixa de 500 Hz já vem ativo: o som deve sair abafado.
+3. Em outro terminal, nesta pasta: `.venv\Scripts\python.exe ws_test.py`.
+4. Deixar tocando 10 minutos e conferir o `camilladsp.log` (underrun, overrun, taxa de captura medida).
+   Se estalar, subir `chunksize`/`target_level` para 2048 e depois 4096.
 
-Cole os resultados no "Registro de decisões" do `PLANO.md`.
+## Spike C: OAuth PKCE + Web API
 
-## Por que `pipe` e não `subprocess`
+Código a escrever na próxima etapa (`spikes/fase0/api/`): login PKCE com redirect em
+`http://127.0.0.1:8888/callback`, refresh token, e chamadas a `/search`, `/me/playlists`,
+`/playlists/{id}/items`, `/me/tracks`, `/me/player/queue` e `PUT /me/player`.
 
-O librespot 0.8 também tem `--backend subprocess --device "camilladsp.exe ..."`, que evita o pipe do shell.
-Ele foi descartado: o `SubprocessSink::stop()` **mata o processo filho a cada pause** (`playback/src/audio_backend/subprocess.rs`).
-Isso reiniciaria o CamillaDSP, reabriria o WASAPI e derrubaria o WebSocket a cada pause.
+## Anotar (colar no "Registro de decisões" do PLANO.md)
+
+- Widevine no WebView2: sim/não; erros do SDK, se houver.
+- `chunksize` e `target_level` que funcionaram; taxa de captura medida pelo rate adjust.
+- Latência dos comandos WebSocket (impressa pelo `ws_test.py`).
+- Processo que aparece no mixer e se o roteamento por app persiste após reiniciar.
+- Endpoints da Web API que falharam.
+- RAM: processos do WebView2 (incluindo o utilitário Widevine) e `camilladsp.exe`.

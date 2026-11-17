@@ -1,8 +1,7 @@
 """Fase 0: altera parâmetros do CamillaDSP em tempo real via WebSocket.
 
-Uso (com o run.cmd rodando e música tocando):
-    pip install websockets
-    python ws_test.py
+Uso (com o run_camilladsp.cmd rodando e música tocando):
+    .venv\\Scripts\\python.exe ws_test.py   (venv desta pasta, já com websockets)
 
 Comandos conferidos em src/socketserver.rs do CamillaDSP v4.1.3:
     {"SetConfigValue": ["<json pointer>", valor]}
