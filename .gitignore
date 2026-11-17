@@ -17,3 +17,6 @@ __pycache__/
 
 # Python venv
 .venv/
+
+# Gerado pelo tauri-build
+spikes/**/gen/

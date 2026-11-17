@@ -1,0 +1,17 @@
+[package]
+name = "spotron-fase0-sdk"
+version = "0.0.0"
+description = "Fase 0 / Spike A: Spotify Web Playback SDK dentro do WebView2 (Tauri 2)"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"
+
+[features]
+# Usado pelo build de release (frontend embutido em vez de devUrl).
+custom-protocol = ["tauri/custom-protocol"]

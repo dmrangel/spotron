@@ -184,7 +184,7 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 4. Transferir a reprodução para o dispositivo pelo celular ou pelo `PUT /me/player`.
 
 **Critérios de aceite:**
-- [ ] Widevine disponível no WebView2 (`requestMediaKeySystemAccess` resolve).
+- [x] Widevine disponível no WebView2 (`requestMediaKeySystemAccess` resolve). *17/11/2026: OK, Edge/WebView2 157, `com.widevine.alpha` SW_SECURE_CRYPTO, sem configuração.*
 - [ ] Toca 10 minutos seguidos, com troca de faixa e seek, sem erro de licença.
 - [ ] Plano B só se falhar: Chrome/Edge em `--app=http://127.0.0.1:<porta>` com `--user-data-dir` próprio.
 

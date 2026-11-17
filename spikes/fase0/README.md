@@ -18,12 +18,37 @@ Nada aqui roda no Linux/CI: precisa de Windows, Widevine, VB-CABLE e conta Premi
    **48000 Hz, 2 canais** (Propriedades > Avançado). Manter os fones como saída padrão.
 3. Já prontos nesta máquina: `camilladsp.exe` 4.1.3 nesta pasta e `.venv` com `websockets`.
 
-## Spike A: Web Playback SDK no WebView2 (Tauri mínimo)
+Ordem: primeiro o Spike C (`login`), porque o Spike A usa o token que ele salva.
 
-Código a escrever na próxima etapa (`spikes/fase0/sdk/`): página Tauri mínima que carrega o SDK,
-mostra o resultado de `requestMediaKeySystemAccess('com.widevine.alpha')` e loga os erros do SDK.
+## Spike C: OAuth PKCE + Web API (`api/api.py`, só Python padrão)
 
-Teste: tocar pelo celular (dispositivo **"Spotron Fase0"**) por 10 minutos, com troca de faixa e seek.
+No cmd, em `spikes\fase0\api`:
+
+```
+python api.py login --client-id <CLIENT_ID>   (abre o navegador; salva Client ID e tokens em %APPDATA%\spotron-spike)
+python api.py test                            (testes só de leitura: /me, busca, playlists, curtidas, player)
+python api.py token                           (renova o access token; rodar antes do Spike A se passou 1 h)
+python api.py test --write                    (com o Spike A aberto: transfere para "Spotron Fase0" e põe 1 faixa na fila)
+```
+
+O `test` inclui de propósito uma busca com `limit=20` (deve falhar: o máximo é 10 desde fev/2026) e
+`/items` de uma playlist seguida mas não própria (deve vir restrito). O resumo no fim lista o que falhou.
+
+## Spike A: Web Playback SDK no WebView2 (`sdk/`, Tauri 2 mínimo)
+
+Compilar (uma vez, ~7 min) e abrir, em `spikes\fase0\sdk`:
+
+```
+cargo build --release --features custom-protocol
+target\release\spotron-fase0-sdk.exe
+```
+
+A página testa o Widevine ao abrir. Depois: **1. Iniciar player** → **2. Transferir para cá**
+(ou escolher "Spotron Fase0" no celular). Tudo o que a página registra vai para `sdk\spike_a.log`.
+Deixar tocando 10 minutos, com troca de faixa e seek; o contador mostra o tempo tocando e os erros.
+
+Resultado parcial (17/11/2026): **Widevine OK** no WebView2 (Edge 157): `com.widevine.alpha`,
+robustez `SW_SECURE_CRYPTO`, sem nenhuma configuração.
 
 ## Spike B: VB-CABLE → CamillaDSP → fones
 
@@ -36,12 +61,6 @@ Teste: tocar pelo celular (dispositivo **"Spotron Fase0"**) por 10 minutos, com 
 3. Em outro terminal, nesta pasta: `.venv\Scripts\python.exe ws_test.py`.
 4. Deixar tocando 10 minutos e conferir o `camilladsp.log` (underrun, overrun, taxa de captura medida).
    Se estalar, subir `chunksize`/`target_level` para 2048 e depois 4096.
-
-## Spike C: OAuth PKCE + Web API
-
-Código a escrever na próxima etapa (`spikes/fase0/api/`): login PKCE com redirect em
-`http://127.0.0.1:8888/callback`, refresh token, e chamadas a `/search`, `/me/playlists`,
-`/playlists/{id}/items`, `/me/tracks`, `/me/player/queue` e `PUT /me/player`.
 
 ## Anotar (colar no "Registro de decisões" do PLANO.md)
 
