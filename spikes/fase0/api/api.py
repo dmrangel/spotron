@@ -1,12 +1,13 @@
 """Fase 0 / Spike C: login OAuth (Authorization Code + PKCE) e testes da Web API.
 
-Só biblioteca padrão do Python. Tokens ficam em %APPDATA%\\spotron-spike\\ (fora do repositório).
+Biblioteca padrão + truststore (no .venv de spikes/fase0). Tokens ficam em
+%APPDATA%\\spotron-spike\\ (fora do repositório). PY = ..\\.venv\\Scripts\\python.exe
 
 Uso:
-    python api.py login --client-id <CLIENT_ID>   # abre o navegador; salva o Client ID e os tokens
-    python api.py token                           # renova o access token se faltar < 10 min
-    python api.py test                            # testes só de leitura
-    python api.py test --write                    # também transfere para "Spotron Fase0" e põe 1 faixa na fila
+    PY api.py login --client-id <CLIENT_ID>   # abre o navegador; salva o Client ID e os tokens
+    PY api.py token                           # renova o access token se faltar < 10 min
+    PY api.py test                            # testes só de leitura
+    PY api.py test --write                    # também transfere para "Spotron Fase0" e põe 1 faixa na fila
 
 Pré-requisito: app em developer.spotify.com/dashboard com o redirect URI
 http://127.0.0.1:8888/callback (o Spotify não aceita "localhost").
@@ -28,6 +29,15 @@ import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
+
+# O accounts.spotify.com usa a CA "Certainly" (Fastly), que o Windows só baixa sob demanda: o
+# OpenSSL do Python não a encontra. O truststore valida pelo próprio Windows (sem desligar nada).
+# Instalado no .venv de spikes/fase0 (pip install truststore).
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
 
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
 AUTH_URL = "https://accounts.spotify.com/authorize"

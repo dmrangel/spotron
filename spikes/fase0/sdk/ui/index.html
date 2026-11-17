@@ -40,7 +40,20 @@
 <div class="card" id="log"></div>
 
 <script>
-const { invoke } = window.__TAURI__.core;
+// Dentro do Tauri usa os comandos do backend; num navegador (plano B, browser_serve.py)
+// usa o servidor local em 127.0.0.1:8890 (GET /token, POST /log).
+const invoke = window.__TAURI__
+  ? window.__TAURI__.core.invoke
+  : async (cmd, args) => {
+      if (cmd === "get_token") {
+        const r = await fetch("/token");
+        if (!r.ok) throw await r.text();
+        return r.text();
+      }
+      if (cmd === "log") {
+        await fetch("/log", { method: "POST", body: args.msg });
+      }
+    };
 const $ = (id) => document.getElementById(id);
 const DEVICE_NAME = "Spotron Fase0";
 

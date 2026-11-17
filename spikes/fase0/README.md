@@ -47,8 +47,20 @@ A página testa o Widevine ao abrir. Depois: **1. Iniciar player** → **2. Tran
 (ou escolher "Spotron Fase0" no celular). Tudo o que a página registra vai para `sdk\spike_a.log`.
 Deixar tocando 10 minutos, com troca de faixa e seek; o contador mostra o tempo tocando e os erros.
 
-Resultado parcial (17/11/2026): **Widevine OK** no WebView2 (Edge 157): `com.widevine.alpha`,
-robustez `SW_SECURE_CRYPTO`, sem nenhuma configuração.
+Resultado (17/11/2026): o Widevine existe no WebView2 157, mas **o Spotify recusa a licença**
+(HTTP 403 em 13/14 pedidos): as faixas pulam com `playback_error`.
+
+### Plano B: a mesma página no Chrome em modo app (funcionou)
+
+```
+..\.venv\Scripts\python.exe browser_serve.py
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://127.0.0.1:8890/ --user-data-dir=%LOCALAPPDATA%\spotron-spike\chrome
+```
+
+Licença 4/4 HTTP 200, 0 erros, troca de faixa e seek OK. RAM: ~427 MB privados.
+
+Diagnóstico de rede/console (WebView2 ou Chrome) com `cdp_watch.py`: abrir o alvo com
+`--remote-debugging-port=9222` (no WebView2, via `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`).
 
 ## Spike B: VB-CABLE → CamillaDSP → fones
 

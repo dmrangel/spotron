@@ -186,7 +186,10 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 **Critérios de aceite:**
 - [x] Widevine disponível no WebView2 (`requestMediaKeySystemAccess` resolve). *17/11/2026: OK, Edge/WebView2 157, `com.widevine.alpha` SW_SECURE_CRYPTO, sem configuração.*
 - [ ] Toca 10 minutos seguidos, com troca de faixa e seek, sem erro de licença.
-- [ ] Plano B só se falhar: Chrome/Edge em `--app=http://127.0.0.1:<porta>` com `--user-data-dir` próprio.
+  *17/11/2026, **WebView2: falhou.** O servidor de licença do Spotify (`/v1/widevine-license/v1/audio/license`) respondeu HTTP 403 em 13 de 14 pedidos; as faixas pulam com `playback_error`. O SDK carrega, o CDN entrega o áudio, só a licença é recusada (provável falta de assinatura VMP aceita pelo Spotify no WebView2).*
+  ***Chrome `--app`: funcionou.** 4 de 4 licenças HTTP 200, 0 `playback_error`, troca de faixa, voltar e seek OK, qualidade boa segundo o usuário. Tocou ~4 min contínuos (o usuário encerrou antes dos 10 min).*
+- [x] Plano B validado: Chrome em `--app=http://127.0.0.1:8890/` com `--user-data-dir` próprio (`sdk/browser_serve.py`). Edge `--app` ainda não testado.
+- RAM do Chrome `--app` tocando (10 processos): **427 MB privados** (777 MB de working set). Maiores: GPU 222 MB, browser 163 MB, CDM 103 MB. Acima da meta; testar `--disable-gpu` e outras flags na Fase 1.
 
 #### Spike B: VB-CABLE → CamillaDSP → fones
 
@@ -209,9 +212,9 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 3. Chamar: `GET /search` (máx. 10 por página), `GET /me/playlists`, `GET /playlists/{id}/items`, `GET /me/tracks`, `POST /me/player/queue`, `PUT /me/player` (transferir para o dispositivo do SDK).
 
 **Critérios de aceite:**
-- [ ] Login funciona e o refresh token renova sem novo login.
-- [ ] Busca, playlists próprias, curtidas e fila respondem.
-- [ ] Anotar o que falha (ex.: itens de playlists seguidas mas não próprias) e o que isso tira da Fase 3.
+- [x] Login funciona e o refresh token renova sem novo login.
+- [x] Busca, playlists próprias, curtidas e fila respondem.
+- [x] Anotar o que falha: só `limit` > 10 na busca (HTTP 400 "Invalid limit"). Itens de playlist seguida mas não própria vieram (217 itens), ao contrário do esperado.
 
 **RAM ao fim da Fase 0:** anotar processos do WebView2 (incluindo o utilitário Widevine) e `camilladsp.exe`.
 
@@ -297,5 +300,7 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 | 2026-11-17 | Saída WASAPI do CamillaDSP validada: "Fones de ouvido (Realtek(R) Audio)", shared, 48000 Hz F32. | Medido no spike do librespot (o lado do CamillaDSP funcionou). Os dois dispositivos Realtek estão em 48000 Hz. |
 | 2026-11-17 | Fonte do áudio: Spotify Web Playback SDK (oficial) + Web API, app de desenvolvedor em modo de desenvolvimento. | Única forma de tocar Spotify sem o app oficial com esta conta. O open.spotify.com toca no navegador do usuário. Limites aceitos: AAC 256, até 5 usuários, busca com 10 por página. |
 | 2026-11-17 | DSP via VB-CABLE → CamillaDSP (captura WASAPI + rate adjust AsyncSinc). | O áudio do SDK é DRM: o app não tem o PCM. O CamillaDSP 4.1 não faz captura por processo. |
-| 2026-11-17 | Mantido o Tauri 2 (WebView2 com Widevine). | Relatos de 2026 de SDK/open.spotify.com tocando no WebView2 sem configuração. A confirmar no Spike A. |
+| 2026-11-17 | ~~SDK tocando dentro do WebView2 do Tauri.~~ **Descartado.** | Widevine existe no WebView2 157, mas o Spotify responde 403 na licença (13/14). |
+| 2026-11-17 | **Tauri 2 para a UI + Chrome em modo `--app` (perfil próprio) para tocar o SDK.** | No Chrome a licença passa (4/4 HTTP 200, 0 erros, troca de faixa e seek OK). O Tauri controla a janela de reprodução via página local e Web API. Custo: ~430 MB privados, a otimizar; testar Edge `--app` como alternativa já instalada em todo Windows. |
+| 2026-11-17 | Spike C aprovado: OAuth PKCE, refresh e Web API. | 11/11 chamadas OK. Busca limitada a 10 por página (`limit=20` → 400), `offset` pagina. Itens de playlist seguida (não própria) vieram normalmente. Python precisa do `truststore` (CA "Certainly" do accounts.spotify.com). |
 | 2026-11-17 | Deezer (pleezer) considerado e deixado como alternativa. | O usuário prefere ficar no Spotify; o Deezer volta à mesa se o Spike A falhar sem plano B viável. |
