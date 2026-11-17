@@ -11,3 +11,6 @@ spikes/**/*.log
 
 # Binários baixados (não versionar)
 *.exe
+
+# Python
+__pycache__/
