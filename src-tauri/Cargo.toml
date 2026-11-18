@@ -21,6 +21,8 @@ sha2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
 url = "2"
+# Cliente WebSocket (síncrono) para o CamillaDSP.
+tungstenite = "0.26"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

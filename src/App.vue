@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import EqPage from "./components/EqPage.vue";
 import PlayerBar from "./components/PlayerBar.vue";
 import SetupCard from "./components/SetupCard.vue";
 import { api, player, startListening, type Status } from "./player";
@@ -9,6 +10,11 @@ const uri = ref("");
 const message = ref("");
 const error = ref("");
 const showLog = ref(false);
+const page = ref<"play" | "eq">("play");
+const pages = [
+  { id: "play", label: "Tocar" },
+  { id: "eq", label: "Equalizador" },
+] as const;
 
 async function refresh() {
   status.value = await api.status();
@@ -64,7 +70,15 @@ async function logout() {
         <!-- Barra lateral -->
         <aside class="flex w-56 flex-col gap-1 border-r border-app-border bg-app-panel p-3">
           <div class="mb-4 px-2 text-lg font-bold text-app-text-strong">Spotron</div>
-          <div class="rounded-app bg-app-accent-soft px-3 py-2 font-semibold text-app-accent">Tocar</div>
+          <button
+            v-for="p in pages"
+            :key="p.id"
+            class="rounded-app px-3 py-2 text-left font-semibold"
+            :class="page === p.id ? 'bg-app-accent-soft text-app-accent' : 'text-app-text hover:bg-app-card'"
+            @click="page = p.id"
+          >
+            {{ p.label }}
+          </button>
           <div class="mt-auto flex items-center gap-2 px-2 text-xs text-app-text-muted">
             <span class="h-2 w-2 rounded-full" :class="ready ? 'bg-app-accent' : 'bg-app-danger'" />
             {{ ready ? "Player conectado" : "Conectando o player..." }}
@@ -74,6 +88,8 @@ async function logout() {
 
         <!-- Conteúdo -->
         <main class="flex-1 overflow-y-auto p-6">
+          <EqPage v-if="page === 'eq'" />
+          <template v-else>
           <section class="mb-4 rounded-app-lg bg-app-card p-5">
             <h2 class="mb-3 font-semibold text-app-text-strong">Tocar um link do Spotify</h2>
             <div class="flex gap-2">
@@ -120,6 +136,7 @@ async function logout() {
             v-if="showLog"
             class="mt-2 max-h-48 overflow-y-auto rounded-app bg-app-panel p-3 text-xs text-app-text-muted"
           >{{ player.logs.join("\n") }}</pre>
+          </template>
         </main>
       </div>
 
