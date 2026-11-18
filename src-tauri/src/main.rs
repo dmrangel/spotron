@@ -68,6 +68,7 @@ fn main() {
             dsp_commands::dsp_set_preset,
             dsp_commands::dsp_set_enabled,
             dsp_commands::dsp_status,
+            dsp_commands::dsp_set_volume,
             dsp_commands::autoeq_parse,
             dsp_commands::race_info,
             dsp_commands::preset_list,

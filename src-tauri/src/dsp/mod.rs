@@ -6,6 +6,7 @@
 //! - Preso a um Job Object (procjob.rs): fechar o app não deixa camilladsp.exe órfão.
 //! - Supervisor: se o processo cair (ex.: dispositivo removido), reinicia com espera crescente.
 
+pub mod extras;
 pub mod preset;
 pub mod spatial;
 
@@ -27,13 +28,20 @@ pub const WS_PORT: u16 = 12340;
 pub struct DspSettings {
     pub enabled: bool,
     pub preset: Preset,
+    /// Volume do app (0–100), aplicado no volume principal do CamillaDSP.
+    #[serde(default = "full_volume")]
+    pub volume: f64,
     #[serde(default)]
     pub devices: Devices,
 }
 
+fn full_volume() -> f64 {
+    100.0
+}
+
 impl Default for DspSettings {
     fn default() -> Self {
-        Self { enabled: true, preset: Preset::default(), devices: Devices::default() }
+        Self { enabled: true, preset: Preset::default(), volume: full_volume(), devices: Devices::default() }
     }
 }
 
@@ -109,7 +117,8 @@ impl Dsp {
     fn spawn(&self) -> Result<(), String> {
         self.write_config_file()?;
         let mut cmd = Command::new(binary()?);
-        cmd.arg("-p").arg(WS_PORT.to_string()).arg("-o").arg(log_path()).arg(config_path());
+        let gain = extras::percent_to_db(self.settings.lock().unwrap().volume);
+        cmd.arg("-p").arg(WS_PORT.to_string()).arg("-o").arg(log_path()).arg(format!("--gain={gain}")).arg(config_path());
         procjob::hide_console(&mut cmd);
         *self.proc.lock().unwrap() = Some(Managed::spawn(&mut cmd).map_err(|e| format!("não iniciei o CamillaDSP: {e}"))?);
         Ok(())
@@ -157,6 +166,17 @@ impl Dsp {
             std::thread::sleep(Duration::from_millis(300));
         }
         Err(last)
+    }
+
+    /// Volume do app ao vivo (SetVolume no fader Main; não recarrega a config).
+    pub fn set_volume(&self, percent: f64) -> Result<(), String> {
+        self.settings.lock().unwrap().volume = percent.clamp(0.0, 100.0);
+        self.save_settings()?;
+        let r = self.ws(&[json!({ "SetVolume": extras::percent_to_db(percent) })])?;
+        match r[0]["SetVolume"]["result"].as_str() {
+            Some("Ok") => Ok(()),
+            other => Err(format!("SetVolume: {other:?}")),
+        }
     }
 
     pub fn status(&self) -> DspStatus {

@@ -5,6 +5,7 @@
 //! A config é gerada como JSON (YAML aceita JSON) e enviada com o comando WebSocket SetConfigJson.
 
 use serde::{Deserialize, Serialize};
+use super::extras::{self, Channels, Loudness, Protection};
 use super::spatial::{self, Ambiophonics, Crossfeed};
 use serde_json::{json, Map, Value};
 
@@ -95,6 +96,15 @@ pub struct Preset {
     /// Caixas (Ambiophonic R.A.C.E.).
     #[serde(default)]
     pub ambiophonics: Ambiophonics,
+    /// Mono, troca L/R, fase, balanço e atraso por canal.
+    #[serde(default)]
+    pub channels: Channels,
+    /// Corte subsônico/ultrassônico.
+    #[serde(default)]
+    pub protection: Protection,
+    /// Loudness adaptativo (acompanha o volume do app).
+    #[serde(default)]
+    pub loudness: Loudness,
     /// Efeitos ainda não implementados ficam guardados sem uso.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -110,6 +120,9 @@ impl Default for Preset {
             limiter: Limiter::default(),
             crossfeed: Crossfeed::default(),
             ambiophonics: Ambiophonics::default(),
+            channels: Channels::default(),
+            protection: Protection::default(),
+            loudness: Loudness::default(),
             extra: Map::new(),
         }
     }
@@ -147,7 +160,8 @@ fn biquad(b: &Band) -> Value {
 }
 
 /// Gera a config completa do CamillaDSP. `enabled == false` = bypass (só o limiter fica, se ligado).
-/// Pipeline: [preamp, correção, EQ] → efeito espacial (mixers) → limiter.
+/// Pipeline: mono/troca → [preamp, correção, EQ] → efeito espacial → fase/balanço/atraso por canal
+/// → proteção + loudness → limiter. O volume principal do CamillaDSP vem depois de tudo.
 pub fn to_camilla(preset: &Preset, devices: &Devices, enabled: bool) -> Value {
     let mut filters = Map::new();
     let mut mixers = Map::new();
@@ -155,6 +169,10 @@ pub fn to_camilla(preset: &Preset, devices: &Devices, enabled: bool) -> Value {
     let mut names: Vec<String> = vec![];
 
     if enabled {
+        if let Some(m) = extras::channel_mixer(&preset.channels) {
+            mixers.insert("ch_mix".into(), m);
+            pipeline.push(json!({ "type": "Mixer", "name": "ch_mix" }));
+        }
         let corr = preset.correction.as_ref().filter(|c| c.enabled);
         let preamp = preset.preamp_db + corr.map_or(0.0, |c| c.preamp_db);
         if preamp != 0.0 {
@@ -187,6 +205,16 @@ pub fn to_camilla(preset: &Preset, devices: &Devices, enabled: bool) -> Value {
             filters.extend(sp.filters);
             mixers.extend(sp.mixers);
             pipeline.extend(sp.steps);
+        }
+        let (left, right) = extras::per_channel(&preset.channels, &mut filters);
+        for (ch, names) in [(0, left), (1, right)] {
+            if !names.is_empty() {
+                pipeline.push(json!({ "type": "Filter", "channels": [ch], "names": names }));
+            }
+        }
+        let post = extras::protection_and_loudness(&preset.protection, &preset.loudness, &mut filters);
+        if !post.is_empty() {
+            pipeline.push(json!({ "type": "Filter", "channels": [0, 1], "names": post }));
         }
     }
     let tail = if preset.limiter.enabled {
@@ -346,8 +374,14 @@ mod tests {
         let mut so_race = Preset::default();
         so_race.ambiophonics.enabled = true;
         so_race.limiter.enabled = false;
+        let mut tudo = race.clone();
+        tudo.channels = Channels { balance: -0.3, mono: false, swap: true, invert_left: true, invert_right: false, delay_left_ms: 0.5, delay_right_ms: 0.0 };
+        tudo.protection = Protection { enabled: true, subsonic_hz: 25.0, ultrasonic_hz: 20000.0 };
+        tudo.loudness.enabled = true;
+        let mut mono = Preset::default();
+        mono.channels.mono = true;
         let d = Devices::default();
-        let cfgs = [to_camilla(&p, &d, true), to_camilla(&nada, &d, true), to_camilla(&xf, &d, true), to_camilla(&race, &d, true), to_camilla(&so_race, &d, true)];
+        let cfgs = [to_camilla(&tudo, &d, true), to_camilla(&mono, &d, true), to_camilla(&p, &d, true), to_camilla(&nada, &d, true), to_camilla(&xf, &d, true), to_camilla(&race, &d, true), to_camilla(&so_race, &d, true)];
         for (i, cfg) in cfgs.iter().enumerate() {
             let f = std::env::temp_dir().join(format!("spotron_test_{i}.yml"));
             std::fs::write(&f, cfg.to_string()).unwrap();

@@ -82,6 +82,8 @@ window.onSpotifyWebPlaybackSDKReady = () => {
   });
   player.addListener("ready", ({ device_id }) => {
     deviceId = device_id;
+    // O volume do app é o do CamillaDSP; o SDK fica cheio (antes a barra mexia no volume do Spotify).
+    player.setVolume(1.0).catch(() => {});
     log(`ready: ${device_id}`);
     post();
   });

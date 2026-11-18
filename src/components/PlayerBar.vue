@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { dsp } from "../dsp";
 import { api, fmtTime, player } from "../player";
 
 const emit = defineEmits<{ error: [msg: string] }>();
@@ -7,7 +8,10 @@ const emit = defineEmits<{ error: [msg: string] }>();
 // Posição interpolada entre as atualizações da página do SDK (1 s).
 const now = ref(Date.now());
 let timer = 0;
-onMounted(() => (timer = window.setInterval(() => (now.value = Date.now()), 250)));
+onMounted(async () => {
+  timer = window.setInterval(() => (now.value = Date.now()), 250);
+  volume.value = (await dsp.get()).volume;
+});
 onUnmounted(() => clearInterval(timer));
 
 const st = computed(() => player.state);
@@ -17,7 +21,28 @@ const position = computed(() => {
   const p = s.paused ? s.position : s.position + (now.value - s.ts);
   return Math.min(p, s.duration);
 });
+// Volume do app = volume principal do CamillaDSP (o SDK fica em 100%; o loudness acompanha este volume).
 const volume = ref(100);
+let volBusy = false;
+let volPending = false;
+async function sendVolume() {
+  if (volBusy) {
+    volPending = true;
+    return;
+  }
+  volBusy = true;
+  try {
+    await dsp.setVolume(volume.value);
+  } catch (e) {
+    emit("error", String(e));
+  } finally {
+    volBusy = false;
+    if (volPending) {
+      volPending = false;
+      sendVolume();
+    }
+  }
+}
 const dragging = ref<number | null>(null);
 
 async function run(fn: () => Promise<unknown>) {
@@ -93,8 +118,9 @@ function onSeekChange() {
         min="0"
         max="100"
         class="flex-1 accent-[var(--app-accent)]"
-        @change="run(() => api.setVolume(volume))"
+        @input="sendVolume"
       />
+      <span class="w-8 text-right text-xs tabular-nums">{{ volume }}</span>
     </div>
   </footer>
 </template>

@@ -59,6 +59,29 @@ export const CROSSFEED_PRESETS = [
   { label: "Jan Meier", cutoff_hz: 650, level_db: 9.5 },
 ];
 
+export interface Channels {
+  balance: number;
+  mono: boolean;
+  swap: boolean;
+  invert_left: boolean;
+  invert_right: boolean;
+  delay_left_ms: number;
+  delay_right_ms: number;
+}
+
+export interface Protection {
+  enabled: boolean;
+  subsonic_hz: number;
+  ultrasonic_hz: number;
+}
+
+export interface Loudness {
+  enabled: boolean;
+  reference_level_db: number;
+  low_boost_db: number;
+  high_boost_db: number;
+}
+
 export interface Preset {
   name: string;
   preamp_db: number;
@@ -67,12 +90,16 @@ export interface Preset {
   limiter: { enabled: boolean; clip_limit_db: number };
   crossfeed: Crossfeed;
   ambiophonics: Ambiophonics;
+  channels: Channels;
+  protection: Protection;
+  loudness: Loudness;
   [extra: string]: unknown;
 }
 
 export interface DspSettings {
   enabled: boolean;
   preset: Preset;
+  volume: number;
 }
 
 export interface DspStatus {
@@ -90,6 +117,7 @@ export const dsp = {
   setPreset: (preset: Preset) => invoke<void>("dsp_set_preset", { preset }),
   setEnabled: (enabled: boolean) => invoke<void>("dsp_set_enabled", { enabled }),
   status: () => invoke<DspStatus>("dsp_status"),
+  setVolume: (percent: number) => invoke<void>("dsp_set_volume", { percent }),
   parseAutoeq: (name: string, text: string) => invoke<Correction>("autoeq_parse", { name, text }),
   raceInfo: (params: Ambiophonics) => invoke<RaceInfo>("race_info", { params }),
   presetList: () => invoke<string[]>("preset_list"),

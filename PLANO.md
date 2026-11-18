@@ -298,9 +298,13 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 - [x] Mudar uma banda na UI altera o som em < 100 ms, sem cortes: `SetConfigJson` com a config inteira leva **0,7 ms** (mediana; máx. 1,3 ms) e vale no bloco seguinte (~21 ms). Usuário confirmou o EQ funcionando; 0 amostras clipadas, carga ~0,04 %.
 - [x] Importar um preset AutoEQ real funciona: `ParametricEQ.txt` real do Sennheiser HD 650 (AutoEq/oratory1990) importado e validado pelo `camilladsp -c` em teste automático (`src-tauri/src/dsp/testdata/`).
 - [x] Fechar o app não deixa o `camilladsp.exe` órfão: app morto à força → 0 `camilladsp.exe` e 0 Edge do player (Job Object); ao reabrir, sobe exatamente 1.
-- [ ] Trocar o fone não deixa o app mudo: a config usa `device: null`, que acompanhou a troca no Spike B; falta repetir com o sidecar do app (o supervisor reinicia o CamillaDSP se ele cair).
+- [x] Trocar o fone não deixa o app mudo: testado pelo usuário com o app; o CamillaDSP (`device: null`) seguiu no mesmo processo, sem erro nem reinício no log.
 - [x] Crossfeed (bs2b: LowpassFO + 0,3 ms no caminho cruzado, ganhos normalizados, presets Padrão/Chu Moy/Jan Meier) e **Ambiophonic R.A.C.E.** (recursão simulada com passa-faixa no laço → 2 FIR via `Conv Values`, atraso em amostras inteiras, compensação automática de ganho). Exclusivos entre si. Configs validadas pelo `camilladsp -c`; usuário confirmou os dois funcionando.
-- [ ] Demais efeitos (loudness, alinhamento de tempo, proteção, fase, balanço/mono/troca) e volume no CamillaDSP: ainda não implementados.
+- [x] Demais efeitos: loudness adaptativo (`Loudness`, fader Main), alinhamento de tempo (`Delay` por canal), proteção de caixas (`BiquadCombo` Butterworth 4ª ordem), inversão de fase (`Gain inverted`), balanço, mono e troca L/R (`Mixer`). Config com tudo ligado validada pelo `camilladsp -c`; usuário confirmou de ouvido.
+- [x] Volume do app no volume principal do CamillaDSP (`SetVolume` ao vivo, `--gain` na inicialização, curva 40·log10); o SDK fica em 100%.
+- [x] RAM (release, tocando, loudness ligado): **395 MB privados** = `spotron.exe` 6 + WebView2 da UI 183 (6 proc.) + Edge do player 201 (8) + CamillaDSP 5. Acima da meta de 250 MB; o próximo corte é o WebView2 da UI.
+
+**Fase 2 concluída em 17/11/2026.** Fora dela por decisão: pseudo-estéreo, reverb e dither (Fase 4, opcionais); pitch/tempo (impossível com o SDK).
 - [x] Player do Spotron voltou a tocar: a causa dos pulos era o Widevine atualizado pelo Edge (ver Riscos), não limite de taxa.
 
 ### Efeitos de DSP (paridade com o Neutron)
@@ -398,6 +402,7 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 | 2026-11-17 | **Spike B aprovado; Fase 0 concluída.** `chunksize` 1024 / `target_level` 1024; WebSocket 0,1–1,5 ms; 0 clipping; troca de saída transparente com `device: null`. RAM: CamillaDSP 5 MB, Edge 444 MB. | Medido em 10 min cronometrados com música, pause, troca de dispositivo e de saída. |
 | 2026-11-17 | Edge do player com `--disable-gpu`, serviços extras desligados e `--disable-site-isolation-trials`. | 403 → 213 MB. A GPU sozinha era 161 MB (a janela não tem vídeo). Sem isolamento é aceitável porque o perfil só abre a página local com o iframe do Spotify. |
 | 2026-11-17 | **Fase 1 concluída.** Edge do player fora da tela + flags anti-oclusão; Job Object (KILL_ON_JOB_CLOSE) prende o Edge ao app; controle da reprodução pela Web API com `device_id`. RAM total 373 MB. | Sem as flags anti-oclusão o SDK não toca com a janela fora da tela. |
+| 2026-11-17 | **Fase 2 concluída.** Volume do app = volume principal do CamillaDSP; efeitos do Neutron implementados (exceto os opcionais da Fase 4). RAM 395 MB. | Critérios testados pelo usuário; configs validadas pelo CamillaDSP. |
 | 2026-11-17 | Janela do Edge do player sem botão na barra de tarefas (WS_EX_TOOLWINDOW). | O usuário via dois ícones (Spotron + globo do Edge). |
 | 2026-11-17 | VB-CABLE continua obrigatório. | O áudio é DRM e sai do Edge direto para um dispositivo: sem cabo não há onde inserir o DSP. Captura por processo tocaria o som em dobro; processar na página não funciona com EME; driver próprio exige assinatura. Facilitar depois: detectar o cabo e rotear o Edge sozinho (interface não documentada IAudioPolicyConfigFactory). |
 | 2026-11-17 | Efeitos do Neutron entram no plano (Fase 2, alguns na 4), incluindo o Ambiophonic R.A.C.E. pedido como "AmbioRace". Pitch/tempo fica fora. | Pedido do usuário. R.A.C.E. vira FIR truncado (o CamillaDSP não tem realimentação no pipeline). |

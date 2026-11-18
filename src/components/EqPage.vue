@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { dsp, FILTER_LABELS, hasGain, type Band, type DspStatus, type FilterType, type Preset } from "../dsp";
 import { player } from "../player";
+import OtherEffects from "./OtherEffects.vue";
 import SpatialEffects from "./SpatialEffects.vue";
 
 const enabled = ref(true);
@@ -280,6 +281,7 @@ function resetPreset() {
     </section>
 
     <SpatialEffects :preset="preset" @apply="apply" />
+    <OtherEffects :preset="preset" @apply="apply" />
 
     <p v-if="info" class="text-sm text-app-accent">{{ info }}</p>
     <p v-if="error" class="text-sm text-app-danger">{{ error }}</p>

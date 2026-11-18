@@ -35,6 +35,12 @@ pub async fn dsp_set_enabled(app: AppHandle, enabled: bool) -> Result<(), String
     .await
 }
 
+/// Volume do app (0–100) no volume principal do CamillaDSP.
+#[tauri::command]
+pub async fn dsp_set_volume(app: AppHandle, percent: f64) -> Result<(), String> {
+    blocking(move || app.state::<AppState>().dsp.set_volume(percent)).await
+}
+
 #[tauri::command]
 pub async fn dsp_status(app: AppHandle) -> Result<DspStatus, String> {
     blocking(move || Ok(app.state::<AppState>().dsp.status())).await
