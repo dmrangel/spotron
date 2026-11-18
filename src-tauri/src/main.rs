@@ -69,6 +69,7 @@ fn main() {
             dsp_commands::dsp_set_enabled,
             dsp_commands::dsp_status,
             dsp_commands::autoeq_parse,
+            dsp_commands::race_info,
             dsp_commands::preset_list,
             dsp_commands::preset_save,
             dsp_commands::preset_load,

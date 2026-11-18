@@ -5,6 +5,7 @@
 //! A config é gerada como JSON (YAML aceita JSON) e enviada com o comando WebSocket SetConfigJson.
 
 use serde::{Deserialize, Serialize};
+use super::spatial::{self, Ambiophonics, Crossfeed};
 use serde_json::{json, Map, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,14 +89,29 @@ pub struct Preset {
     pub correction: Option<Correction>,
     #[serde(default)]
     pub limiter: Limiter,
-    /// Efeitos ainda não implementados (crossfeed, ambiophonics...) ficam guardados sem uso.
+    /// Fones. Exclui o R.A.C.E. (se os dois vierem ligados, vale o R.A.C.E.).
+    #[serde(default)]
+    pub crossfeed: Crossfeed,
+    /// Caixas (Ambiophonic R.A.C.E.).
+    #[serde(default)]
+    pub ambiophonics: Ambiophonics,
+    /// Efeitos ainda não implementados ficam guardados sem uso.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
 
 impl Default for Preset {
     fn default() -> Self {
-        Self { name: "Plano".into(), preamp_db: 0.0, filters: vec![], correction: None, limiter: Limiter::default(), extra: Map::new() }
+        Self {
+            name: "Plano".into(),
+            preamp_db: 0.0,
+            filters: vec![],
+            correction: None,
+            limiter: Limiter::default(),
+            crossfeed: Crossfeed::default(),
+            ambiophonics: Ambiophonics::default(),
+            extra: Map::new(),
+        }
     }
 }
 
@@ -131,8 +147,11 @@ fn biquad(b: &Band) -> Value {
 }
 
 /// Gera a config completa do CamillaDSP. `enabled == false` = bypass (só o limiter fica, se ligado).
+/// Pipeline: [preamp, correção, EQ] → efeito espacial (mixers) → limiter.
 pub fn to_camilla(preset: &Preset, devices: &Devices, enabled: bool) -> Value {
     let mut filters = Map::new();
+    let mut mixers = Map::new();
+    let mut pipeline: Vec<Value> = vec![];
     let mut names: Vec<String> = vec![];
 
     if enabled {
@@ -154,21 +173,40 @@ pub fn to_camilla(preset: &Preset, devices: &Devices, enabled: bool) -> Value {
             filters.insert(n.clone(), biquad(b));
             names.push(n);
         }
+        if !names.is_empty() {
+            pipeline.push(json!({ "type": "Filter", "description": "EQ", "channels": [0, 1], "names": names }));
+        }
+        let space = if preset.ambiophonics.enabled {
+            Some(spatial::ambiophonics(&preset.ambiophonics, devices.samplerate as f64).0)
+        } else if preset.crossfeed.enabled {
+            Some(spatial::crossfeed(&preset.crossfeed))
+        } else {
+            None
+        };
+        if let Some(sp) = space {
+            filters.extend(sp.filters);
+            mixers.extend(sp.mixers);
+            pipeline.extend(sp.steps);
+        }
     }
-    if preset.limiter.enabled {
+    let tail = if preset.limiter.enabled {
         filters.insert(
             "limiter".into(),
             json!({ "type": "Limiter", "parameters": { "clip_limit": preset.limiter.clip_limit_db, "soft_clip": false } }),
         );
-        names.push("limiter".into());
-    }
-    if names.is_empty() {
-        // Pipeline precisa de pelo menos um filtro: ganho de 0 dB é transparente.
+        Some("limiter")
+    } else if pipeline.is_empty() {
+        // Pipeline precisa de pelo menos um passo: ganho de 0 dB é transparente.
         filters.insert("passthrough".into(), json!({ "type": "Gain", "parameters": { "gain": 0.0, "scale": "dB" } }));
-        names.push("passthrough".into());
+        Some("passthrough")
+    } else {
+        None
+    };
+    if let Some(t) = tail {
+        pipeline.push(json!({ "type": "Filter", "channels": [0, 1], "names": [t] }));
     }
 
-    json!({
+    let mut cfg = json!({
         "title": format!("Spotron - {}", preset.name),
         "devices": {
             "samplerate": devices.samplerate,
@@ -185,8 +223,12 @@ pub fn to_camilla(preset: &Preset, devices: &Devices, enabled: bool) -> Value {
             "playback": { "type": "Wasapi", "channels": 2, "device": devices.playback_device, "format": "F32", "exclusive": false },
         },
         "filters": filters,
-        "pipeline": [{ "type": "Filter", "description": "Spotron", "channels": [0, 1], "names": names }],
-    })
+        "pipeline": pipeline,
+    });
+    if !mixers.is_empty() {
+        cfg["mixers"] = Value::Object(mixers);
+    }
+    cfg
 }
 
 /// Importa o formato paramétrico do AutoEQ ("ParametricEQ.txt"):
@@ -264,12 +306,13 @@ mod tests {
         p.correction = Some(parse_autoeq("HD650", AUTOEQ).unwrap());
         let cfg = to_camilla(&p, &Devices::default(), true);
         let names: Vec<_> = cfg["pipeline"][0]["names"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_owned()).collect();
-        assert_eq!(names, ["preamp", "corr_0", "corr_1", "eq_0", "eq_1", "limiter"]);
+        assert_eq!(names, ["preamp", "corr_0", "corr_1", "eq_0", "eq_1"]);
+        assert_eq!(cfg["pipeline"][1]["names"], json!(["limiter"]));
         assert!((cfg["filters"]["preamp"]["parameters"]["gain"].as_f64().unwrap() + 8.2).abs() < 1e-9);
         assert!(cfg["filters"]["eq_1"]["parameters"].get("gain").is_none(), "Lowpass não leva gain");
         // Bypass: só o limiter.
         let off = to_camilla(&p, &Devices::default(), false);
-        assert_eq!(off["pipeline"][0]["names"], json!(["limiter"]));
+        assert_eq!(off["pipeline"], json!([{ "type": "Filter", "channels": [0, 1], "names": ["limiter"] }]));
     }
 
     /// Valida as configs geradas com o próprio camilladsp.exe (`-c`), se o binário estiver presente.
@@ -296,7 +339,16 @@ mod tests {
         p.correction = Some(real);
         let mut nada = Preset::default();
         nada.limiter.enabled = false;
-        for (i, cfg) in [to_camilla(&p, &Devices::default(), true), to_camilla(&nada, &Devices::default(), true)].iter().enumerate() {
+        let mut xf = p.clone();
+        xf.crossfeed.enabled = true;
+        let mut race = p.clone();
+        race.ambiophonics.enabled = true;
+        let mut so_race = Preset::default();
+        so_race.ambiophonics.enabled = true;
+        so_race.limiter.enabled = false;
+        let d = Devices::default();
+        let cfgs = [to_camilla(&p, &d, true), to_camilla(&nada, &d, true), to_camilla(&xf, &d, true), to_camilla(&race, &d, true), to_camilla(&so_race, &d, true)];
+        for (i, cfg) in cfgs.iter().enumerate() {
             let f = std::env::temp_dir().join(format!("spotron_test_{i}.yml"));
             std::fs::write(&f, cfg.to_string()).unwrap();
             let out = std::process::Command::new(&bin).arg("-c").arg(&f).output().unwrap();

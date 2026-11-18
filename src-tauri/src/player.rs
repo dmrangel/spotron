@@ -56,6 +56,44 @@ fn edge_path() -> Option<PathBuf> {
 
 pub type Edge = crate::procjob::Managed;
 
+/// Tira a janela do Edge do player da barra de tarefas e do Alt+Tab (WS_EX_TOOLWINDOW). A janela
+/// continua "mostrada" fora da tela, então a reprodução não muda. Procura por até 15 s, porque o Edge
+/// cria a janela depois de alguns instantes.
+#[cfg(windows)]
+fn hide_from_taskbar(pid: u32) {
+    use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+
+    unsafe extern "system" fn visit(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let (pid, found) = &mut *(lparam as *mut (u32, u32));
+        let mut owner = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut owner);
+        if owner == *pid && IsWindowVisible(hwnd) != 0 && GetWindow(hwnd, GW_OWNER).is_null() {
+            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let tool = (ex | WS_EX_TOOLWINDOW as isize) & !(WS_EX_APPWINDOW as isize);
+            if tool != ex {
+                // O botão da barra só some depois de esconder e mostrar de novo.
+                ShowWindow(hwnd, SW_HIDE);
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, tool);
+                ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            }
+            *found += 1;
+        }
+        1
+    }
+
+    std::thread::spawn(move || {
+        for _ in 0..30 {
+            let mut ctx: (u32, u32) = (pid, 0);
+            unsafe { EnumWindows(Some(visit), &mut ctx as *mut _ as LPARAM) };
+            if ctx.1 > 0 {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    });
+}
+
 /// O Edge baixa sozinho um Widevine mais novo para `<perfil>\WidevineCdm` (4.10.3112.0 em
 /// 17/11/2026) e o servidor de licença do Spotify responde 403 para ele (faixas pulando); o embutido
 /// no Edge (4.10.3050.1) funciona. Remove a pasta baixada e põe um ARQUIVO vazio com o mesmo nome:
@@ -94,7 +132,10 @@ pub fn ensure_edge(app: &AppHandle) -> Result<(), String> {
     if std::env::var_os("SPOTRON_EDGE_DEBUG").is_some() {
         cmd.arg("--remote-debugging-port=9223");
     }
-    *slot = Some(Edge::spawn(&mut cmd).map_err(|e| format!("não abri o Edge: {e}"))?);
+    let edge = Edge::spawn(&mut cmd).map_err(|e| format!("não abri o Edge: {e}"))?;
+    #[cfg(windows)]
+    hide_from_taskbar(edge.child.id());
+    *slot = Some(edge);
     log_line(app, "Edge do player aberto");
     Ok(())
 }

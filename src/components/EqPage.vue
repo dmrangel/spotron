@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { dsp, FILTER_LABELS, hasGain, type Band, type DspStatus, type FilterType, type Preset } from "../dsp";
 import { player } from "../player";
+import SpatialEffects from "./SpatialEffects.vue";
 
 const enabled = ref(true);
 const preset = ref<Preset | null>(null);
@@ -277,6 +278,8 @@ function resetPreset() {
         <button class="text-app-text-muted hover:text-app-danger" title="Remover banda" @click="removeBand(i)">✕</button>
       </div>
     </section>
+
+    <SpatialEffects :preset="preset" @apply="apply" />
 
     <p v-if="info" class="text-sm text-app-accent">{{ info }}</p>
     <p v-if="error" class="text-sm text-app-danger">{{ error }}</p>

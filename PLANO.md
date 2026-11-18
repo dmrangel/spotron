@@ -299,7 +299,8 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 - [x] Importar um preset AutoEQ real funciona: `ParametricEQ.txt` real do Sennheiser HD 650 (AutoEq/oratory1990) importado e validado pelo `camilladsp -c` em teste automático (`src-tauri/src/dsp/testdata/`).
 - [x] Fechar o app não deixa o `camilladsp.exe` órfão: app morto à força → 0 `camilladsp.exe` e 0 Edge do player (Job Object); ao reabrir, sobe exatamente 1.
 - [ ] Trocar o fone não deixa o app mudo: a config usa `device: null`, que acompanhou a troca no Spike B; falta repetir com o sidecar do app (o supervisor reinicia o CamillaDSP se ele cair).
-- [ ] Efeitos da seção "Efeitos de DSP" (crossfeed, R.A.C.E., loudness, delay, proteção, fase, balanço/mono) e volume no CamillaDSP: **ainda não implementados**.
+- [x] Crossfeed (bs2b: LowpassFO + 0,3 ms no caminho cruzado, ganhos normalizados, presets Padrão/Chu Moy/Jan Meier) e **Ambiophonic R.A.C.E.** (recursão simulada com passa-faixa no laço → 2 FIR via `Conv Values`, atraso em amostras inteiras, compensação automática de ganho). Exclusivos entre si. Configs validadas pelo `camilladsp -c`; usuário confirmou os dois funcionando.
+- [ ] Demais efeitos (loudness, alinhamento de tempo, proteção, fase, balanço/mono/troca) e volume no CamillaDSP: ainda não implementados.
 - [x] Player do Spotron voltou a tocar: a causa dos pulos era o Widevine atualizado pelo Edge (ver Riscos), não limite de taxa.
 
 ### Efeitos de DSP (paridade com o Neutron)
@@ -397,5 +398,7 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 | 2026-11-17 | **Spike B aprovado; Fase 0 concluída.** `chunksize` 1024 / `target_level` 1024; WebSocket 0,1–1,5 ms; 0 clipping; troca de saída transparente com `device: null`. RAM: CamillaDSP 5 MB, Edge 444 MB. | Medido em 10 min cronometrados com música, pause, troca de dispositivo e de saída. |
 | 2026-11-17 | Edge do player com `--disable-gpu`, serviços extras desligados e `--disable-site-isolation-trials`. | 403 → 213 MB. A GPU sozinha era 161 MB (a janela não tem vídeo). Sem isolamento é aceitável porque o perfil só abre a página local com o iframe do Spotify. |
 | 2026-11-17 | **Fase 1 concluída.** Edge do player fora da tela + flags anti-oclusão; Job Object (KILL_ON_JOB_CLOSE) prende o Edge ao app; controle da reprodução pela Web API com `device_id`. RAM total 373 MB. | Sem as flags anti-oclusão o SDK não toca com a janela fora da tela. |
+| 2026-11-17 | Janela do Edge do player sem botão na barra de tarefas (WS_EX_TOOLWINDOW). | O usuário via dois ícones (Spotron + globo do Edge). |
+| 2026-11-17 | VB-CABLE continua obrigatório. | O áudio é DRM e sai do Edge direto para um dispositivo: sem cabo não há onde inserir o DSP. Captura por processo tocaria o som em dobro; processar na página não funciona com EME; driver próprio exige assinatura. Facilitar depois: detectar o cabo e rotear o Edge sozinho (interface não documentada IAudioPolicyConfigFactory). |
 | 2026-11-17 | Efeitos do Neutron entram no plano (Fase 2, alguns na 4), incluindo o Ambiophonic R.A.C.E. pedido como "AmbioRace". Pitch/tempo fica fora. | Pedido do usuário. R.A.C.E. vira FIR truncado (o CamillaDSP não tem realimentação no pipeline). |
 | 2026-11-17 | Deezer (pleezer) considerado e deixado como alternativa. | O usuário prefere ficar no Spotify; o Deezer volta à mesa se o Spike A falhar sem plano B viável. |

@@ -40,6 +40,23 @@ pub async fn dsp_status(app: AppHandle) -> Result<DspStatus, String> {
     blocking(move || Ok(app.state::<AppState>().dsp.status())).await
 }
 
+#[derive(serde::Serialize)]
+pub struct RaceInfo {
+    delay_us: f64,
+    delay_samples: usize,
+    gain_db: f64,
+    taps: usize,
+}
+
+/// O que o R.A.C.E. realmente aplica: atraso arredondado para amostras e compensação de ganho.
+#[tauri::command]
+pub fn race_info(state: State<'_, AppState>, params: crate::dsp::spatial::Ambiophonics) -> RaceInfo {
+    let fs = state.dsp.settings.lock().unwrap().devices.samplerate as f64;
+    let (same, _, d) = crate::dsp::spatial::race_impulse(&params, fs);
+    let (_, delay_us, gain_db) = crate::dsp::spatial::ambiophonics(&params, fs);
+    RaceInfo { delay_us, delay_samples: d, gain_db, taps: same.len() }
+}
+
 #[tauri::command]
 pub fn autoeq_parse(name: String, text: String) -> Result<preset::Correction, String> {
     preset::parse_autoeq(name.trim(), &text)

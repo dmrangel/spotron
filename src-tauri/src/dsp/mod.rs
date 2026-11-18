@@ -7,6 +7,7 @@
 //! - Supervisor: se o processo cair (ex.: dispositivo removido), reinicia com espera crescente.
 
 pub mod preset;
+pub mod spatial;
 
 use crate::config;
 use crate::procjob::{self, Managed};
