@@ -294,13 +294,13 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 7. Proteção contra clipping: limiter no fim da cadeia, ligado por padrão.
 8. Reiniciar o CamillaDSP quando o dispositivo de saída mudar (fone conectado/desconectado).
 
-**Critérios de aceite** (17/11/2026, testados com o Opera tocando no "CABLE Input", porque o servidor de licença estava recusando o nosso player; ver Riscos):
+**Critérios de aceite** (17/11/2026, testados com o Opera tocando no "CABLE Input" enquanto o player pulava faixas; ver Riscos):
 - [x] Mudar uma banda na UI altera o som em < 100 ms, sem cortes: `SetConfigJson` com a config inteira leva **0,7 ms** (mediana; máx. 1,3 ms) e vale no bloco seguinte (~21 ms). Usuário confirmou o EQ funcionando; 0 amostras clipadas, carga ~0,04 %.
 - [x] Importar um preset AutoEQ real funciona: `ParametricEQ.txt` real do Sennheiser HD 650 (AutoEq/oratory1990) importado e validado pelo `camilladsp -c` em teste automático (`src-tauri/src/dsp/testdata/`).
 - [x] Fechar o app não deixa o `camilladsp.exe` órfão: app morto à força → 0 `camilladsp.exe` e 0 Edge do player (Job Object); ao reabrir, sobe exatamente 1.
 - [ ] Trocar o fone não deixa o app mudo: a config usa `device: null`, que acompanhou a troca no Spike B; falta repetir com o sidecar do app (o supervisor reinicia o CamillaDSP se ele cair).
 - [ ] Efeitos da seção "Efeitos de DSP" (crossfeed, R.A.C.E., loudness, delay, proteção, fase, balanço/mono) e volume no CamillaDSP: **ainda não implementados**.
-- [ ] Retestar o player do Spotron depois da pausa no servidor de licença.
+- [x] Player do Spotron voltou a tocar: a causa dos pulos era o Widevine atualizado pelo Edge (ver Riscos), não limite de taxa.
 
 ### Efeitos de DSP (paridade com o Neutron)
 
@@ -371,7 +371,7 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 |---|---|---|
 | Microsoft muda o suporte a Widevine no WebView2 (não documentado) | SDK para de tocar | Plano B: Chrome/Edge em modo `--app`. Último recurso: Electron castLabs ECS com assinatura EVS. |
 | Spotify restringe ainda mais o modo de desenvolvimento ou o SDK | Perda de busca/biblioteca ou do player | Acompanhar o blog de desenvolvedores; o app oficial fica como reserva. |
-| **Limite no servidor de licença** (visto em 17/11/2026, ~22:30) | Depois de centenas de licenças em poucas horas (benchmarks, testes de pulo, muitos perfis/dispositivos novos), `widevine-license` passou a responder 403 sem corpo para o nosso player (Edge, qualquer flag), e o SDK pula faixas. A Web API seguia OK (200) e o open.spotify.com/app oficial tocavam normalmente. | Testes de reprodução econômicos (1 dispositivo, poucas faixas; nada de benchmarks em laço). Não contornar com outro Client ID. Retestar após pausa; no app, evitar reconexões/reinícios que gerem licenças à toa. Testar o DSP com outro player (Opera → CABLE Input) enquanto isso. |
+| **Widevine atualizado pelo Edge é recusado pelo Spotify** (17/11/2026) | O Edge baixa sozinho para o perfil um Widevine mais novo (4.10.3112.0) do que o embutido (4.10.3050.1). Com ele, `widevine-license` responde 403 sem corpo e o SDK pula faixas ("pula 5 músicas"). Primeiro suspeitamos de limite de taxa, mas o open.spotify.com tocava e a Web API seguia OK. | **Resolvido:** antes de abrir o Edge, o app apaga `<perfil>\WidevineCdm` e cria um ARQUIVO vazio com esse nome; o component updater não instala e o Edge usa o embutido (teste: 7 licenças 200, 0 × 403, 0 erros). Não usar `--disable-component-update`: ele desliga o Widevine inteiro (`initialization_error`). Quando o Edge atualizar o embutido, conferir de novo. Mesmo assim, testes de reprodução econômicos. |
 | Termos de desenvolvedor: "modificar/alterar" e "capturar" o stream | App de desenvolvedor suspenso | Uso pessoal, nada gravado, nada distribuído. Risco baixo, mas não zero. |
 | O roteamento por app é por executável (`msedge.exe`) | Se o usuário abrir o Edge para navegar, esse áudio também passa pelo DSP | Aceito (o usuário usa o Opera). Alternativas se incomodar: `setSinkId` injetado no iframe do SDK via CDP, ou Chrome `--app`. |
 | ~~Clock do VB-CABLE diferente do da placa~~ | ~~Estalos periódicos~~ | **Resolvido no Spike B:** rate adjust + AsyncSinc mantém 0 underrun com música (fator 0,99975–1,00008). |

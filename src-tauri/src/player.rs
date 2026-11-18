@@ -32,6 +32,7 @@ const EDGE_FLAGS: &[&str] = &[
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
     "--disable-background-timer-throttling",
+    // Não usar --disable-component-update: ele desliga o Widevine inteiro (initialization_error).
     // Economia de RAM (ram_bench.py, 17/11/2026).
     "--disable-gpu",
     "--disable-gpu-compositing",
@@ -55,6 +56,26 @@ fn edge_path() -> Option<PathBuf> {
 
 pub type Edge = crate::procjob::Managed;
 
+/// O Edge baixa sozinho um Widevine mais novo para `<perfil>\WidevineCdm` (4.10.3112.0 em
+/// 17/11/2026) e o servidor de licença do Spotify responde 403 para ele (faixas pulando); o embutido
+/// no Edge (4.10.3050.1) funciona. Remove a pasta baixada e põe um ARQUIVO vazio com o mesmo nome:
+/// o component updater não consegue instalar e o Edge segue com o embutido.
+fn pin_bundled_widevine(app: &AppHandle, profile: &std::path::Path) {
+    let p = profile.join("WidevineCdm");
+    if p.is_dir() {
+        match std::fs::remove_dir_all(&p) {
+            Ok(()) => log_line(app, "Widevine baixado no perfil removido (usando o embutido no Edge)"),
+            Err(e) => log_line(app, &format!("não removi {}: {e}", p.display())),
+        }
+    }
+    if !p.exists() {
+        let _ = std::fs::create_dir_all(profile);
+        if let Err(e) = std::fs::write(&p, b"") {
+            log_line(app, &format!("não criei o bloqueio do Widevine: {e}"));
+        }
+    }
+}
+
 /// Abre o Edge do player se ainda não estiver aberto (precisa estar logado: a página pede o token).
 pub fn ensure_edge(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
@@ -64,6 +85,7 @@ pub fn ensure_edge(app: &AppHandle) -> Result<(), String> {
     }
     let exe = edge_path().ok_or("Microsoft Edge não encontrado")?;
     let profile = config::local_dir().join("edge-profile");
+    pin_bundled_widevine(app, &profile);
     let mut cmd = Command::new(exe);
     cmd.arg(format!("--app=http://127.0.0.1:{PLAYER_PORT}/"))
         .arg(format!("--user-data-dir={}", profile.display()))
