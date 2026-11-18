@@ -4,8 +4,8 @@ Sobe o servidor local (página + token, ver browser_serve.py) numa thread e abre
 --app com perfil próprio. O servidor vive enquanto a janela do Chrome estiver aberta, então a
 reprodução pode ir para o app oficial e voltar para o "Spotron Fase0" quantas vezes for preciso.
 
-    ..\\.venv\\Scripts\\python.exe player.py            (Chrome)
-    ..\\.venv\\Scripts\\python.exe player.py --edge     (Edge, para comparar)
+    ..\\.venv\\Scripts\\python.exe player.py            (Edge: padrão, existe em todo Windows)
+    ..\\.venv\\Scripts\\python.exe player.py --chrome   (Chrome, para comparar)
     ..\\.venv\\Scripts\\python.exe player.py --debug    (DevTools em 9222, para o cdp_watch.py)
 """
 
@@ -28,11 +28,11 @@ BROWSERS = {
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--edge", action="store_true")
+    ap.add_argument("--chrome", action="store_true")
     ap.add_argument("--debug", action="store_true")
     args = ap.parse_args()
 
-    name = "edge" if args.edge else "chrome"
+    name = "chrome" if args.chrome else "edge"
     profile = Path(os.environ["LOCALAPPDATA"]) / "spotron-spike" / name
     url = f"http://127.0.0.1:{browser_serve.PORT}/"
 

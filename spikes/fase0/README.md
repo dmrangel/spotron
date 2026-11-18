@@ -53,8 +53,11 @@ Resultado (17/11/2026): o Widevine existe no WebView2 157, mas **o Spotify recus
 ### Plano B: a mesma página no Chrome em modo app (funcionou)
 
 ```
-..\.venv\Scripts\python.exe player.py          (Chrome; --edge para o Edge; --debug liga o CDP em 9222)
+..\.venv\Scripts\python.exe player.py          (Edge, padrão; --chrome para o Chrome; --debug liga o CDP em 9222)
 ```
+
+Para o Spike B, no Mixer de volume, pôr a saída do **Microsoft Edge** em "CABLE Input".
+Resultado do Spike B (17/11/2026): aprovado; números no PLANO.md (Fase 0).
 
 O `player.py` sobe o servidor local (página + token) e abre o Chrome em `--app` com perfil próprio
 e `--autoplay-policy=no-user-gesture-required`. O player inicia sozinho, o servidor vive enquanto a

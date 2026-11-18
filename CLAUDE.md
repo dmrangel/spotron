@@ -1,6 +1,8 @@
 # Contexto
-Player Spotify para Windows: Tauri 2 + Spotify Web Playback SDK (no WebView2) + Web API (OAuth PKCE)
-+ CamillaDSP (sidecar, capturando do VB-CABLE). Plano completo em PLANO.md.
+Player Spotify para Windows: Tauri 2 (UI) + Spotify Web Playback SDK numa janela do Edge `--app`
+com perfil próprio + Web API (OAuth PKCE) + CamillaDSP (sidecar, capturando do VB-CABLE).
+Plano completo em PLANO.md. Fase 0 concluída em 17/11/2026.
+O SDK NÃO roda no WebView2 do Tauri: o Spotify recusa a licença Widevine dele (HTTP 403).
 Trabalhar uma fase por vez, respeitando os critérios de aceite.
 
 # Regras
@@ -14,8 +16,10 @@ Trabalhar uma fase por vez, respeitando os critérios de aceite.
   Versão fixada: CamillaDSP 4.1.3 (não usar 5.0-beta).
 - OAuth: Authorization Code com PKCE. Redirect em http://127.0.0.1:<porta>/callback
   (o Spotify não aceita `localhost`).
-- Áudio: o app toca no "CABLE Input (VB-Audio Virtual Cable)"; o CamillaDSP captura
-  "CABLE Output" via WASAPI shared com enable_rate_adjust + AsyncSinc e toca nos fones.
+- Áudio: o msedge.exe do player toca no "CABLE Input (VB-Audio Virtual Cable)" (preferência por
+  executável no Mixer de volume); o CamillaDSP captura "CABLE Output" via WASAPI shared com
+  enable_rate_adjust + AsyncSinc e toca na saída padrão (`device: null`, que acompanha a troca de
+  saída sozinho). Valores validados: chunksize 1024, target_level 1024 (spikes/fase0/vbcable.yml).
   WASAPI shared exige samplerate igual ao formato padrão de cada dispositivo (hoje 48000 Hz).
 - Toolchain Rust: MSVC. Shell para pipes binários: cmd ou PowerShell 7+, nunca PowerShell 5.
 - Presets de DSP ficam em JSON próprio (formato em PLANO.md), nunca YAML do CamillaDSP direto.

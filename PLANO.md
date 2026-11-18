@@ -27,32 +27,42 @@ Player desktop leve para Windows que toca músicas do Spotify (conta Premium) co
 ```
 ┌──────────────────────────── App Tauri 2 ────────────────────────────┐
 │                                                                      │
-│  Frontend (WebView2 + Widevine)          Backend Rust                │
+│  Frontend (WebView2)                     Backend Rust                │
 │  ┌────────────────────────────┐         ┌──────────────────────────┐ │
 │  │ UI + temas CSS             │◄─events─┤ OAuth PKCE + tokens      │ │
 │  │ Editor de EQ, Visualizador │─invoke─►│ Cliente Web API          │ │
-│  │ Spotify Web Playback SDK   │         │ Processo CamillaDSP      │ │
-│  └─────────────┬──────────────┘         │ Cliente WebSocket (DSP)  │ │
-│                │ áudio (DRM, AAC 256)   │ Captura p/ FFT ──────────┼─► visualizador
-│                ▼                        └──────────────────────────┘ │
-└────────────────┼─────────────────────────────────────────────────────┘
-                 ▼  saída do app → "CABLE Input (VB-Audio Virtual Cable)"
+│  │ Controles de reprodução    │         │ Servidor local (página   │ │
+│  └────────────────────────────┘         │  do player + /token)     │ │
+│                                         │ Processo Edge --app      │ │
+│                                         │ Processo CamillaDSP      │ │
+│                                         │ Cliente WebSocket (DSP)  │ │
+│                                         │ Captura p/ FFT ──────────┼─► visualizador
+│                                         └────────────┬─────────────┘ │
+└──────────────────────────────────────────────────────┼───────────────┘
+                                                       │ inicia/encerra
+        ┌──────────────────────────────────────────────▼───┐
+        │ msedge.exe --app=http://127.0.0.1:<porta>/        │
+        │ perfil próprio, janela oculta/minimizada          │
+        │ Spotify Web Playback SDK (Widevine, AAC 256)      │
+        └──────────────────────────┬───────────────────────┘
+                                   ▼  saída do msedge.exe → "CABLE Input (VB-Audio Virtual Cable)"
         ┌───────────────────────────────────┐
         │ camilladsp.exe (sidecar)          │◄── WebSocket (controle do DSP)
         │ capture: Wasapi "CABLE Output"    │
         │ rate adjust + AsyncSinc           │
-        │ playback: Wasapi (fones/padrão)   │
+        │ playback: Wasapi (padrão)         │
         └───────────────────────────────────┘
 ```
 
-O áudio do SDK é protegido por DRM e é tocado pelo próprio WebView2: o código do app não tem acesso ao PCM. O único ponto de inserção do DSP é depois da saída do Windows. Por isso o app toca num **cabo de áudio virtual** e o CamillaDSP captura dele.
+O áudio do SDK é protegido por DRM e é tocado pelo próprio Edge: o código do app não tem acesso ao PCM. O único ponto de inserção do DSP é depois da saída do Windows. Por isso o player toca num **cabo de áudio virtual** e o CamillaDSP captura dele. O SDK roda no Edge e não no WebView2 do Tauri porque o Spotify recusa a licença do WebView2 (Spike A).
 
 ### Decisões e motivos
 
 | Decisão | Motivo | Alternativa descartada |
 |---|---|---|
-| **Tauri 2** para a UI | WebView2 do sistema: binário pequeno, pouca RAM, temas em CSS. O WebView2 do Windows 11 já traz o Widevine (relatos de 2026; não documentado oficialmente pela Microsoft). | Electron com castLabs ECS (exige assinatura VMP via EVS a cada build; fica como último recurso). Chrome/Edge em modo `--app` (fica como plano B). |
-| **Spotify Web Playback SDK** para tocar | Oficial, toca com a conta do usuário (o open.spotify.com toca nesta máquina). Aparece como dispositivo Connect, controlável também pelo celular. | **librespot**: o Spotify recusa a chave de áudio desta conta (`audio key error 0 1`, librespot#1649, sem workaround). Testado em 17/11/2026. |
+| **Tauri 2** para a UI | WebView2 do sistema: binário pequeno, pouca RAM, temas em CSS. | Electron (mais pesado; o castLabs ECS exige assinatura VMP via EVS a cada build). |
+| **Spotify Web Playback SDK** para tocar | Oficial, toca com a conta do usuário. Aparece como dispositivo Connect, controlável também pelo celular. | **librespot**: o Spotify recusa a chave de áudio desta conta (`audio key error 0 1`, librespot#1649, sem workaround). Testado em 17/11/2026. |
+| **Edge em modo `--app`** (perfil próprio) como janela de reprodução do SDK | O Spotify aceita a licença Widevine do Edge (e do Chrome); o Edge existe em todo Windows e não é o navegador de uso do usuário, então a preferência de saída por executável não atrapalha. O Tauri sobe uma página local que hospeda o SDK. | **SDK dentro do WebView2 do Tauri**: Widevine existe, mas a licença volta HTTP 403 (13/14). Chrome `--app` funciona, mas não existe em todo Windows. |
 | **Web API** (OAuth PKCE) para busca, biblioteca e fila | Oficial. No modo de desenvolvimento de 2026 ainda tem player, fila, busca, playlists próprias e biblioteca. | Scraping ou APIs internas (frágil e pior nos termos). |
 | **VB-CABLE** como ponte de áudio | Gratuito, assinado, usado no exemplo da doc do CamillaDSP. O CamillaDSP 4.1 não faz captura por processo. | Loopback do dispositivo inteiro (pega o som de todos os apps). Virtual Audio Cable (pago). Drivers open source (exigem test-signing). |
 | **CamillaDSP como sidecar** | Motor de DSP maduro: biquads, compressor, limiter, delay, convolução FIR, API WebSocket. Saída WASAPI já provada nesta máquina. | DSP próprio em Rust (fica para o projeto Android). |
@@ -77,7 +87,7 @@ O áudio do SDK é protegido por DRM e é tocado pelo próprio WebView2: o códi
 │  ├─ binaries/              ← camilladsp-x86_64-pc-windows-msvc.exe (sidecar)
 │  └─ tauri.conf.json
 ├─ src/                      ← frontend Vue 3 + Tailwind (mesma stack do Modrinth App)
-│  ├─ player/                ← wrapper do Web Playback SDK
+│  ├─ player/                ← página do Web Playback SDK (servida localmente, aberta no Edge --app)
 │  ├─ themes/                ← temas CSS (modrinth-dark.css é o padrão)
 │  ├─ tokens.css             ← camada de tokens semânticos do app
 │  └─ components/
@@ -199,12 +209,19 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 3. Repetir o `ws_test.py` (passa-baixa 500 Hz ↔ 20 kHz, varredura do peaking).
 
 **Critérios de aceite:**
-- [ ] 10 min sem estalos (anotar `chunksize` e `target_level`).
-- [ ] Rate adjust estável: sem underrun/overrun no `camilladsp.log` (anotar a taxa de captura medida).
-- [ ] Passa-baixa de 500 Hz audível.
-- [ ] Mudança via WebSocket sem interromper a música (anotar a latência impressa).
-- [ ] Só o áudio do app passa pelo cabo; outros apps tocam normalmente nos fones.
-- [ ] Formato documentado: AAC 256 → WebView2 → cabo a 48000 Hz F32 → CamillaDSP 48000 Hz F32 → fones.
+*Resultados de 17/11/2026 (player no Edge `--app`, janela cronometrada 21:24–21:34):*
+- [x] 10 min sem estalos com **`chunksize: 1024`, `target_level: 1024`** (sem precisar subir). 0 underrun/overrun com música tocando, 0 erros, 0 amostras clipadas. O usuário confirmou "perfeito" e boa definição.
+- [x] Rate adjust estável: taxa medida do cabo oscila 47 611–48 260 Hz por segundo (média ~48 110 Hz); fator de correção entre 0,99975 e 1,00008; buffer ~1 100–2 300 amostras. Os 3 "underruns" da janela vêm todos do `silence_timeout` (pause do usuário e saída da reprodução para outro dispositivo) e são reinícios esperados, não estalos.
+- [x] Passa-baixa de 500 Hz audível (confirmado pelo usuário).
+- [x] Mudança via WebSocket sem interromper a música: **0,1–1,5 ms** por comando `SetConfigValue` (o som muda no bloco seguinte, ~21 ms). Carga de processamento ~0,1–0,3 %.
+- [x] Só o áudio do app passa pelo cabo: a preferência do Mixer de volume é **por executável** (`msedge.exe`). Ok porque o usuário não usa o Edge no dia a dia; em geral, qualquer uso do Edge passaria pelo DSP (ver Riscos).
+- [x] Formato: AAC 256 (SDK) → Edge → "CABLE Input" 48000 Hz → CamillaDSP F32 48000 Hz (AsyncSinc Balanced + rate adjust) → "Fones de ouvido (Realtek)" 48000 Hz F32 shared.
+
+*Testes extras:*
+- Pause de ~20 s e retomada: OK (o CamillaDSP pausa no silêncio e retoma sozinho).
+- Reprodução levada para outro dispositivo e trazida de volta: OK.
+- **Troca da saída padrão do Windows (fones → alto-falantes): OK, sem nenhum evento no log.** Com `device: null` o Windows move o fluxo sozinho (roteamento automático do WASAPI shared); não precisou reiniciar o CamillaDSP.
+- Mesmo teste com o Chrome `--app` antes da troca para o Edge: também OK.
 
 #### Spike C: OAuth PKCE + Web API
 
@@ -217,15 +234,22 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 - [x] Busca, playlists próprias, curtidas e fila respondem.
 - [x] Anotar o que falha: só `limit` > 10 na busca (HTTP 400 "Invalid limit"). Itens de playlist seguida mas não própria vieram (217 itens), ao contrário do esperado.
 
-**RAM ao fim da Fase 0:** anotar processos do WebView2 (incluindo o utilitário Widevine) e `camilladsp.exe`.
+**RAM ao fim da Fase 0 (17/11/2026, tocando):**
+- `camilladsp.exe`: **5 MB** privados (21 MB working set).
+- Player Edge `--app` (12 processos): **444 MB** privados (804 MB working set). Maiores: GPU 146 MB, renderer 83 MB, CDM (Widevine) 68 MB, browser 56 MB. Inclui serviços inúteis aqui (indexador de busca, carteira).
+- Player Chrome `--app` (10 processos), para comparação: 427 MB privados.
+- Meta de < 250 MB ainda não atingida: na Fase 1 testar `--disable-gpu`, `--disable-features=...` para os serviços extras do Edge e medir de novo.
+
+**Fase 0 concluída em 17/11/2026:** Spikes A (Edge/Chrome `--app`), B e C aprovados.
 
 ### Fase 1: Esqueleto Tauri + player
 
 1. Criar o app Tauri 2 de verdade (Vue 3 + Tailwind).
 2. Login OAuth PKCE no backend Rust, com tokens em `%APPDATA%` (refresh automático).
-3. Wrapper do Web Playback SDK no frontend; o backend entrega o token via comando Tauri.
-4. Expor ao frontend `play(uri)`, `pause`, `resume`, `next`, `prev`, `seek`, `volume`, via SDK e Web API.
+3. Player do SDK: o backend sobe o servidor local (página do player + `/token`, como `spikes/fase0/sdk/player.py`) e abre o `msedge.exe --app` com perfil próprio, minimizado ou fora da tela; encerra o Edge junto com o app. Reaproveitar a robustez do spike (token com novas tentativas, reconexão, início sem clique com `--autoplay-policy=no-user-gesture-required`).
+4. Expor ao frontend `play(uri)`, `pause`, `resume`, `next`, `prev`, `seek`, `volume`, via Web API (e mensagens para a página do player quando a Web API não bastar).
 5. O app aparece como dispositivo Spotify Connect, controlável também pelo celular.
+6. Reduzir a RAM do Edge (`--disable-gpu`, desligar serviços extras) e medir.
 
 **Critérios de aceite:**
 - [ ] Login funciona e persiste entre reinícios.
@@ -334,8 +358,9 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 | Microsoft muda o suporte a Widevine no WebView2 (não documentado) | SDK para de tocar | Plano B: Chrome/Edge em modo `--app`. Último recurso: Electron castLabs ECS com assinatura EVS. |
 | Spotify restringe ainda mais o modo de desenvolvimento ou o SDK | Perda de busca/biblioteca ou do player | Acompanhar o blog de desenvolvedores; o app oficial fica como reserva. |
 | Termos de desenvolvedor: "modificar/alterar" e "capturar" o stream | App de desenvolvedor suspenso | Uso pessoal, nada gravado, nada distribuído. Risco baixo, mas não zero. |
-| O roteamento por app pega o `msedgewebview2.exe` compartilhado | Áudio de outros apps WebView2 passa pelo DSP, ou o roteamento se perde | Testar no Spike B; WebView2 Fixed Version empacotado; ou `setSinkId` injetado no iframe do SDK. |
-| Clock do VB-CABLE diferente do da placa | Estalos periódicos ou buffer crescendo | `enable_rate_adjust` + `AsyncSinc` no CamillaDSP; medir no Spike B. |
+| O roteamento por app é por executável (`msedge.exe`) | Se o usuário abrir o Edge para navegar, esse áudio também passa pelo DSP | Aceito (o usuário usa o Opera). Alternativas se incomodar: `setSinkId` injetado no iframe do SDK via CDP, ou Chrome `--app`. |
+| ~~Clock do VB-CABLE diferente do da placa~~ | ~~Estalos periódicos~~ | **Resolvido no Spike B:** rate adjust + AsyncSinc mantém 0 underrun com música (fator 0,99975–1,00008). |
+| ~~Mudança de dispositivo de saída~~ | ~~CamillaDSP perde a saída~~ | **Resolvido no Spike B:** com `device: null` o Windows move o fluxo sozinho. Continua valendo detectar erro e reiniciar o sidecar como rede de segurança (ex.: dispositivo removido em modo exclusivo). |
 | Mudança de dispositivo de áudio no Windows (fone conectado/desconectado) | CamillaDSP perde a saída | Detectar o erro e reiniciar o sidecar com o dispositivo novo. |
 | Qualidade limitada a AAC 256 | Teto de qualidade abaixo do app oficial | Aceito: o objetivo é DSP e estabilidade, não lossless. |
 
@@ -353,5 +378,7 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 | 2026-11-17 | ~~SDK tocando dentro do WebView2 do Tauri.~~ **Descartado.** | Widevine existe no WebView2 157, mas o Spotify responde 403 na licença (13/14). |
 | 2026-11-17 | **Tauri 2 para a UI + Chrome em modo `--app` (perfil próprio) para tocar o SDK.** | No Chrome a licença passa (4/4 HTTP 200, 0 erros, troca de faixa e seek OK). O Tauri controla a janela de reprodução via página local e Web API. Custo: ~430 MB privados, a otimizar; testar Edge `--app` como alternativa já instalada em todo Windows. |
 | 2026-11-17 | Spike C aprovado: OAuth PKCE, refresh e Web API. | 11/11 chamadas OK. Busca limitada a 10 por página (`limit=20` → 400), `offset` pagina. Itens de playlist seguida (não própria) vieram normalmente. Python precisa do `truststore` (CA "Certainly" do accounts.spotify.com). |
+| 2026-11-17 | **Player do SDK no Edge `--app`** (antes Chrome). | Pedido do usuário: o Edge existe em todo Windows. Licença 200 em todos os pedidos, 10 min sem erro. |
+| 2026-11-17 | **Spike B aprovado; Fase 0 concluída.** `chunksize` 1024 / `target_level` 1024; WebSocket 0,1–1,5 ms; 0 clipping; troca de saída transparente com `device: null`. RAM: CamillaDSP 5 MB, Edge 444 MB. | Medido em 10 min cronometrados com música, pause, troca de dispositivo e de saída. |
 | 2026-11-17 | Efeitos do Neutron entram no plano (Fase 2, alguns na 4), incluindo o Ambiophonic R.A.C.E. pedido como "AmbioRace". Pitch/tempo fica fora. | Pedido do usuário. R.A.C.E. vira FIR truncado (o CamillaDSP não tem realimentação no pipeline). |
 | 2026-11-17 | Deezer (pleezer) considerado e deixado como alternativa. | O usuário prefere ficar no Spotify; o Deezer volta à mesa se o Spike A falhar sem plano B viável. |
