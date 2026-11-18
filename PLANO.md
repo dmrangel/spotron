@@ -249,7 +249,16 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 3. Player do SDK: o backend sobe o servidor local (página do player + `/token`, como `spikes/fase0/sdk/player.py`) e abre o `msedge.exe --app` com perfil próprio, minimizado ou fora da tela; encerra o Edge junto com o app. Reaproveitar a robustez do spike (token com novas tentativas, reconexão, início sem clique com `--autoplay-policy=no-user-gesture-required`).
 4. Expor ao frontend `play(uri)`, `pause`, `resume`, `next`, `prev`, `seek`, `volume`, via Web API (e mensagens para a página do player quando a Web API não bastar).
 5. O app aparece como dispositivo Spotify Connect, controlável também pelo celular.
-6. Reduzir a RAM do Edge (`--disable-gpu`, desligar serviços extras) e medir.
+6. ~~Reduzir a RAM do Edge e medir.~~ **Feito em 17/11/2026** (`spikes/fase0/sdk/ram_bench.py`): usar `OPTIMIZE_FLAGS` do `player.py` (sem GPU, sem serviços extras do Edge, sem isolamento de sites). Edge tocando: **403 → ~213–216 MB** privados (9 processos), 0 erros, som confirmado sem estalos pelo usuário. Total com o CamillaDSP (5 MB): ~221 MB, abaixo da meta de 250 MB (ainda falta somar o Tauri).
+
+   | Flags | RAM privada | Tocou |
+   |---|---|---|
+   | nenhuma | 403 MB | sim |
+   | sem GPU | 256 MB | sim |
+   | + sem serviços extras | 251–258 MB | sim |
+   | **+ sem isolamento de sites** | **213 MB** | sim |
+   | + 1 renderer + heap JS 96 MB | 211–215 MB | sim |
+   | sem GPU + extras + só 1 renderer | 203–235 MB | inconclusivo (2×), descartado |
 
 **Critérios de aceite:**
 - [ ] Login funciona e persiste entre reinícios.
@@ -380,5 +389,6 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 | 2026-11-17 | Spike C aprovado: OAuth PKCE, refresh e Web API. | 11/11 chamadas OK. Busca limitada a 10 por página (`limit=20` → 400), `offset` pagina. Itens de playlist seguida (não própria) vieram normalmente. Python precisa do `truststore` (CA "Certainly" do accounts.spotify.com). |
 | 2026-11-17 | **Player do SDK no Edge `--app`** (antes Chrome). | Pedido do usuário: o Edge existe em todo Windows. Licença 200 em todos os pedidos, 10 min sem erro. |
 | 2026-11-17 | **Spike B aprovado; Fase 0 concluída.** `chunksize` 1024 / `target_level` 1024; WebSocket 0,1–1,5 ms; 0 clipping; troca de saída transparente com `device: null`. RAM: CamillaDSP 5 MB, Edge 444 MB. | Medido em 10 min cronometrados com música, pause, troca de dispositivo e de saída. |
+| 2026-11-17 | Edge do player com `--disable-gpu`, serviços extras desligados e `--disable-site-isolation-trials`. | 403 → 213 MB. A GPU sozinha era 161 MB (a janela não tem vídeo). Sem isolamento é aceitável porque o perfil só abre a página local com o iframe do Spotify. |
 | 2026-11-17 | Efeitos do Neutron entram no plano (Fase 2, alguns na 4), incluindo o Ambiophonic R.A.C.E. pedido como "AmbioRace". Pitch/tempo fica fora. | Pedido do usuário. R.A.C.E. vira FIR truncado (o CamillaDSP não tem realimentação no pipeline). |
 | 2026-11-17 | Deezer (pleezer) considerado e deixado como alternativa. | O usuário prefere ficar no Spotify; o Deezer volta à mesa se o Spike A falhar sem plano B viável. |
