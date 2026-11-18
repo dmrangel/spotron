@@ -20,3 +20,6 @@ __pycache__/
 
 # Gerado pelo tauri-build
 spikes/**/gen/
+
+# Tauri
+src-tauri/gen/

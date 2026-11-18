@@ -18,7 +18,7 @@ import urllib.request
 
 import websockets
 
-PORT = 9222
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9222
 seen = set()
 
 

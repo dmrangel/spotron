@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Spotron player</title>
+<style>
+  /* Janela fora da tela; não é UI do usuário. */
+  body { margin: 0; padding: 12px; font: 12px/1.4 Consolas, monospace; background: #000; color: #888; }
+</style>
+</head>
+<body>
+<div id="status">iniciando...</div>
+<script>
+// Página do Web Playback SDK servida pelo backend do Spotron (src-tauri/src/player.rs).
+// GET /token: access token (renovado pelo backend). POST /state: estado para a UI. POST /log: log.
+const DEVICE_NAME = "Spotron";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let player = null, deviceId = null, lastState = null, reconnecting = false;
+
+function log(msg) {
+  document.getElementById("status").textContent = msg;
+  fetch("/log", { method: "POST", body: msg }).catch(() => {});
+}
+
+function post(extra) {
+  const s = lastState;
+  const t = s && s.track_window && s.track_window.current_track;
+  const body = {
+    device_id: deviceId,
+    ready: !!deviceId,
+    active: !!s,
+    paused: s ? s.paused : true,
+    position: s ? s.position : 0,
+    duration: s ? s.duration : 0,
+    ts: Date.now(),
+    track: t ? {
+      uri: t.uri,
+      name: t.name,
+      artists: t.artists.map((a) => a.name).join(", "),
+      album: t.album && t.album.name,
+      image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
+    } : null,
+    ...extra,
+  };
+  fetch("/state", { method: "POST", body: JSON.stringify(body) }).catch(() => {});
+}
+
+async function getToken() {
+  let wait = 1000;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const r = await fetch("/token");
+      if (r.ok) return await r.text();
+      throw new Error(await r.text());
+    } catch (e) {
+      log(`token (tentativa ${attempt}): ${e.message || e}`);
+      if (attempt >= 6) throw e;
+      await sleep(wait);
+      wait = Math.min(wait * 2, 15000);
+    }
+  }
+}
+
+async function reconnect(reason) {
+  if (!player || reconnecting) return;
+  reconnecting = true;
+  log(`reconectando (${reason})`);
+  try {
+    player.disconnect();
+    await sleep(2000);
+    log(`connect(): ${await player.connect()}`);
+  } finally {
+    reconnecting = false;
+  }
+}
+
+window.onSpotifyWebPlaybackSDKReady = () => {
+  player = new Spotify.Player({
+    name: DEVICE_NAME,
+    getOAuthToken: (cb) => getToken().then(cb).catch((e) => log(`sem token: ${e}`)),
+    volume: 1.0, // volume final fica no app (Web API agora; CamillaDSP na Fase 2)
+  });
+  player.addListener("ready", ({ device_id }) => {
+    deviceId = device_id;
+    log(`ready: ${device_id}`);
+    post();
+  });
+  player.addListener("not_ready", ({ device_id }) => {
+    deviceId = null;
+    log(`not_ready: ${device_id}`);
+    post();
+    setTimeout(() => reconnect("not_ready"), 3000);
+  });
+  for (const ev of ["initialization_error", "authentication_error", "account_error", "playback_error"]) {
+    player.addListener(ev, ({ message }) => {
+      log(`${ev}: ${message}`);
+      post({ error: `${ev}: ${message}` });
+      if (ev === "authentication_error") setTimeout(() => reconnect(ev), 5000);
+    });
+  }
+  player.addListener("autoplay_failed", () => log("autoplay_failed"));
+  player.addListener("player_state_changed", (state) => {
+    lastState = state;
+    post();
+  });
+  player.connect().then((ok) => log(`connect(): ${ok}`));
+};
+
+function loadSdk() {
+  const s = document.createElement("script");
+  s.src = "https://sdk.scdn.co/spotify-player.js";
+  s.onerror = () => { log("falha ao carregar o SDK; nova tentativa em 5 s"); s.remove(); setTimeout(loadSdk, 5000); };
+  document.body.appendChild(s);
+}
+
+// Posição atualizada a cada 1 s enquanto toca (a UI interpola entre as atualizações).
+setInterval(async () => {
+  if (!player || !lastState || lastState.paused) return;
+  const st = await player.getCurrentState();
+  if (st) { lastState = st; post(); }
+}, 1000);
+
+loadSdk();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+/* Camada de tokens do app: os componentes usam SÓ estes nomes (--app-*), nunca cores fixas.
+   Cada tema (themes/*.css) define os valores de base. */
+:root {
+  --app-bg: var(--surface-1);
+  --app-panel: var(--surface-2);
+  --app-card: var(--surface-3);
+  --app-card-raised: var(--surface-4);
+  --app-border: var(--surface-5);
+  --app-text-strong: var(--color-text-primary);
+  --app-text: var(--color-text-default);
+  --app-text-muted: var(--color-text-tertiary);
+  --app-accent: var(--color-brand);
+  --app-accent-soft: var(--color-brand-highlight);
+  --app-danger: var(--color-red);
+  --app-radius-sm: var(--radius-sm);
+  --app-radius: var(--radius-md);
+  --app-radius-lg: var(--radius-lg);
+}

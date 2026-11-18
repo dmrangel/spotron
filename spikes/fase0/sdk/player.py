@@ -40,10 +40,11 @@ def main():
     ap.add_argument("--debug", action="store_true")
     ap.add_argument("--extra", default="", help="flags extras do navegador, separadas por espaço (benchmark de RAM)")
     ap.add_argument("--no-optimize", action="store_true", help="sem as flags de economia de RAM")
+    ap.add_argument("--profile", help="pasta de perfil do navegador (padrão: %%LOCALAPPDATA%%\\spotron-spike\\<navegador>)")
     args = ap.parse_args()
 
     name = "chrome" if args.chrome else "edge"
-    profile = Path(os.environ["LOCALAPPDATA"]) / "spotron-spike" / name
+    profile = Path(args.profile) if args.profile else Path(os.environ["LOCALAPPDATA"]) / "spotron-spike" / name
     url = f"http://127.0.0.1:{browser_serve.PORT}/"
 
     try:

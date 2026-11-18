@@ -87,7 +87,7 @@ O áudio do SDK é protegido por DRM e é tocado pelo próprio Edge: o código d
 │  ├─ binaries/              ← camilladsp-x86_64-pc-windows-msvc.exe (sidecar)
 │  └─ tauri.conf.json
 ├─ src/                      ← frontend Vue 3 + Tailwind (mesma stack do Modrinth App)
-│  ├─ player/                ← página do Web Playback SDK (servida localmente, aberta no Edge --app)
+│  ├─ player.ts              ← estado do player e comandos (a página do SDK fica em src-tauri/player/)
 │  ├─ themes/                ← temas CSS (modrinth-dark.css é o padrão)
 │  ├─ tokens.css             ← camada de tokens semânticos do app
 │  └─ components/
@@ -260,11 +260,14 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
    | + 1 renderer + heap JS 96 MB | 211–215 MB | sim |
    | sem GPU + extras + só 1 renderer | 203–235 MB | inconclusivo (2×), descartado |
 
-**Critérios de aceite:**
-- [ ] Login funciona e persiste entre reinícios.
-- [ ] Tocar uma URI colada na UI funciona.
-- [ ] Controles básicos funcionam.
-- [ ] RAM do app medida e anotada.
+**Critérios de aceite** (17/11/2026, app em `src/` + `src-tauri/`, página do player em `src-tauri/player/player.html`):
+- [x] Login funciona e persiste entre reinícios (Client ID e tokens em `%APPDATA%\Spotron`; o app foi reaberto várias vezes sem pedir login).
+- [x] Tocar uma URI colada na UI funciona (links `open.spotify.com/...` e URIs `spotify:` de faixa, álbum, playlist, artista, episódio).
+- [x] Controles básicos funcionam (play/pause, anterior/próxima, seek, volume; confirmado pelo usuário). O app aparece como "Spotron" no celular.
+- [x] RAM medida (release, tocando): **373 MB privados** no total = `spotron.exe` 6 MB + WebView2 da UI 158 MB (6 processos) + Edge do player 204 MB (8) + CamillaDSP 5 MB. Acima da meta de 250 MB: próximo corte é o WebView2 da UI (testar `--disable-gpu` e afins via `additionalBrowserArgs`).
+
+*Bug encontrado e corrigido:* com a janela do Edge fora da tela (`--window-position=-32000,-32000`) a página ficava `hidden` e o SDK aceitava a transferência mas não tocava (posição parada, sem pedir licença, sem erro). Correção: `--disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling` e `CalculateNativeWinOcclusion` em `--disable-features`. Diagnóstico com `SPOTRON_EDGE_DEBUG=1` (DevTools em 9223) + `spikes/fase0/sdk/cdp_watch.py 9223`.
+*Job Object verificado:* matar o `spotron.exe` derruba todos os processos do Edge do player (0 órfãos).
 
 ### Fase 2: DSP integrado
 
@@ -390,5 +393,6 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 | 2026-11-17 | **Player do SDK no Edge `--app`** (antes Chrome). | Pedido do usuário: o Edge existe em todo Windows. Licença 200 em todos os pedidos, 10 min sem erro. |
 | 2026-11-17 | **Spike B aprovado; Fase 0 concluída.** `chunksize` 1024 / `target_level` 1024; WebSocket 0,1–1,5 ms; 0 clipping; troca de saída transparente com `device: null`. RAM: CamillaDSP 5 MB, Edge 444 MB. | Medido em 10 min cronometrados com música, pause, troca de dispositivo e de saída. |
 | 2026-11-17 | Edge do player com `--disable-gpu`, serviços extras desligados e `--disable-site-isolation-trials`. | 403 → 213 MB. A GPU sozinha era 161 MB (a janela não tem vídeo). Sem isolamento é aceitável porque o perfil só abre a página local com o iframe do Spotify. |
+| 2026-11-17 | **Fase 1 concluída.** Edge do player fora da tela + flags anti-oclusão; Job Object (KILL_ON_JOB_CLOSE) prende o Edge ao app; controle da reprodução pela Web API com `device_id`. RAM total 373 MB. | Sem as flags anti-oclusão o SDK não toca com a janela fora da tela. |
 | 2026-11-17 | Efeitos do Neutron entram no plano (Fase 2, alguns na 4), incluindo o Ambiophonic R.A.C.E. pedido como "AmbioRace". Pitch/tempo fica fora. | Pedido do usuário. R.A.C.E. vira FIR truncado (o CamillaDSP não tem realimentação no pipeline). |
 | 2026-11-17 | Deezer (pleezer) considerado e deixado como alternativa. | O usuário prefere ficar no Spotify; o Deezer volta à mesa se o Spike A falhar sem plano B viável. |
