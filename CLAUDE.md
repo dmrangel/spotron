@@ -3,6 +3,9 @@ Player Spotify para Windows: Tauri 2 (UI) + Spotify Web Playback SDK numa janela
 com perfil próprio + Web API (OAuth PKCE) + CamillaDSP (sidecar, capturando do VB-CABLE).
 Plano completo em PLANO.md. Fase 0 concluída em 17/11/2026.
 O SDK NÃO roda no WebView2 do Tauri: o Spotify recusa a licença Widevine dele (HTTP 403).
+O Edge do player deve usar o Widevine EMBUTIDO: o baixado pelo component updater (4.10.3112.0) também
+leva 403 (faixas pulando). player.rs::pin_bundled_widevine cuida disso; não usar --disable-component-update.
+Testes de reprodução devem ser econômicos (poucas faixas, um dispositivo).
 Trabalhar uma fase por vez, respeitando os critérios de aceite.
 
 # Regras

@@ -87,7 +87,7 @@ O áudio do SDK é protegido por DRM e é tocado pelo próprio Edge: o código d
 │  ├─ binaries/              ← camilladsp-x86_64-pc-windows-msvc.exe (sidecar)
 │  └─ tauri.conf.json
 ├─ src/                      ← frontend Vue 3 + Tailwind (mesma stack do Modrinth App)
-│  ├─ player/                ← página do Web Playback SDK (servida localmente, aberta no Edge --app)
+│  ├─ player.ts              ← estado do player e comandos (a página do SDK fica em src-tauri/player/)
 │  ├─ themes/                ← temas CSS (modrinth-dark.css é o padrão)
 │  ├─ tokens.css             ← camada de tokens semânticos do app
 │  └─ components/
@@ -249,13 +249,25 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 3. Player do SDK: o backend sobe o servidor local (página do player + `/token`, como `spikes/fase0/sdk/player.py`) e abre o `msedge.exe --app` com perfil próprio, minimizado ou fora da tela; encerra o Edge junto com o app. Reaproveitar a robustez do spike (token com novas tentativas, reconexão, início sem clique com `--autoplay-policy=no-user-gesture-required`).
 4. Expor ao frontend `play(uri)`, `pause`, `resume`, `next`, `prev`, `seek`, `volume`, via Web API (e mensagens para a página do player quando a Web API não bastar).
 5. O app aparece como dispositivo Spotify Connect, controlável também pelo celular.
-6. Reduzir a RAM do Edge (`--disable-gpu`, desligar serviços extras) e medir.
+6. ~~Reduzir a RAM do Edge e medir.~~ **Feito em 17/11/2026** (`spikes/fase0/sdk/ram_bench.py`): usar `OPTIMIZE_FLAGS` do `player.py` (sem GPU, sem serviços extras do Edge, sem isolamento de sites). Edge tocando: **403 → ~213–216 MB** privados (9 processos), 0 erros, som confirmado sem estalos pelo usuário. Total com o CamillaDSP (5 MB): ~221 MB, abaixo da meta de 250 MB (ainda falta somar o Tauri).
 
-**Critérios de aceite:**
-- [ ] Login funciona e persiste entre reinícios.
-- [ ] Tocar uma URI colada na UI funciona.
-- [ ] Controles básicos funcionam.
-- [ ] RAM do app medida e anotada.
+   | Flags | RAM privada | Tocou |
+   |---|---|---|
+   | nenhuma | 403 MB | sim |
+   | sem GPU | 256 MB | sim |
+   | + sem serviços extras | 251–258 MB | sim |
+   | **+ sem isolamento de sites** | **213 MB** | sim |
+   | + 1 renderer + heap JS 96 MB | 211–215 MB | sim |
+   | sem GPU + extras + só 1 renderer | 203–235 MB | inconclusivo (2×), descartado |
+
+**Critérios de aceite** (17/11/2026, app em `src/` + `src-tauri/`, página do player em `src-tauri/player/player.html`):
+- [x] Login funciona e persiste entre reinícios (Client ID e tokens em `%APPDATA%\Spotron`; o app foi reaberto várias vezes sem pedir login).
+- [x] Tocar uma URI colada na UI funciona (links `open.spotify.com/...` e URIs `spotify:` de faixa, álbum, playlist, artista, episódio).
+- [x] Controles básicos funcionam (play/pause, anterior/próxima, seek, volume; confirmado pelo usuário). O app aparece como "Spotron" no celular.
+- [x] RAM medida (release, tocando): **373 MB privados** no total = `spotron.exe` 6 MB + WebView2 da UI 158 MB (6 processos) + Edge do player 204 MB (8) + CamillaDSP 5 MB. Acima da meta de 250 MB: próximo corte é o WebView2 da UI (testar `--disable-gpu` e afins via `additionalBrowserArgs`).
+
+*Bug encontrado e corrigido:* com a janela do Edge fora da tela (`--window-position=-32000,-32000`) a página ficava `hidden` e o SDK aceitava a transferência mas não tocava (posição parada, sem pedir licença, sem erro). Correção: `--disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling` e `CalculateNativeWinOcclusion` em `--disable-features`. Diagnóstico com `SPOTRON_EDGE_DEBUG=1` (DevTools em 9223) + `spikes/fase0/sdk/cdp_watch.py 9223`.
+*Job Object verificado:* matar o `spotron.exe` derruba todos os processos do Edge do player (0 órfãos).
 
 ### Fase 2: DSP integrado
 
@@ -282,11 +294,18 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 7. Proteção contra clipping: limiter no fim da cadeia, ligado por padrão.
 8. Reiniciar o CamillaDSP quando o dispositivo de saída mudar (fone conectado/desconectado).
 
-**Critérios de aceite:**
-- [ ] Mudar uma banda na UI altera o som em < 100 ms, sem cortes.
-- [ ] Importar um preset AutoEQ real funciona.
-- [ ] Fechar o app não deixa o `camilladsp.exe` órfão.
-- [ ] Trocar o fone não deixa o app mudo.
+**Critérios de aceite** (17/11/2026, testados com o Opera tocando no "CABLE Input" enquanto o player pulava faixas; ver Riscos):
+- [x] Mudar uma banda na UI altera o som em < 100 ms, sem cortes: `SetConfigJson` com a config inteira leva **0,7 ms** (mediana; máx. 1,3 ms) e vale no bloco seguinte (~21 ms). Usuário confirmou o EQ funcionando; 0 amostras clipadas, carga ~0,04 %.
+- [x] Importar um preset AutoEQ real funciona: `ParametricEQ.txt` real do Sennheiser HD 650 (AutoEq/oratory1990) importado e validado pelo `camilladsp -c` em teste automático (`src-tauri/src/dsp/testdata/`).
+- [x] Fechar o app não deixa o `camilladsp.exe` órfão: app morto à força → 0 `camilladsp.exe` e 0 Edge do player (Job Object); ao reabrir, sobe exatamente 1.
+- [x] Trocar o fone não deixa o app mudo: testado pelo usuário com o app; o CamillaDSP (`device: null`) seguiu no mesmo processo, sem erro nem reinício no log.
+- [x] Crossfeed (bs2b: LowpassFO + 0,3 ms no caminho cruzado, ganhos normalizados, presets Padrão/Chu Moy/Jan Meier) e **Ambiophonic R.A.C.E.** (recursão simulada com passa-faixa no laço → 2 FIR via `Conv Values`, atraso em amostras inteiras, compensação automática de ganho). Exclusivos entre si. Configs validadas pelo `camilladsp -c`; usuário confirmou os dois funcionando.
+- [x] Demais efeitos: loudness adaptativo (`Loudness`, fader Main), alinhamento de tempo (`Delay` por canal), proteção de caixas (`BiquadCombo` Butterworth 4ª ordem), inversão de fase (`Gain inverted`), balanço, mono e troca L/R (`Mixer`). Config com tudo ligado validada pelo `camilladsp -c`; usuário confirmou de ouvido.
+- [x] Volume do app no volume principal do CamillaDSP (`SetVolume` ao vivo, `--gain` na inicialização, curva 40·log10); o SDK fica em 100%.
+- [x] RAM (release, tocando, loudness ligado): **395 MB privados** = `spotron.exe` 6 + WebView2 da UI 183 (6 proc.) + Edge do player 201 (8) + CamillaDSP 5. Acima da meta de 250 MB; o próximo corte é o WebView2 da UI.
+
+**Fase 2 concluída em 17/11/2026.** Fora dela por decisão: pseudo-estéreo, reverb e dither (Fase 4, opcionais); pitch/tempo (impossível com o SDK).
+- [x] Player do Spotron voltou a tocar: a causa dos pulos era o Widevine atualizado pelo Edge (ver Riscos), não limite de taxa.
 
 ### Efeitos de DSP (paridade com o Neutron)
 
@@ -357,6 +376,7 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 |---|---|---|
 | Microsoft muda o suporte a Widevine no WebView2 (não documentado) | SDK para de tocar | Plano B: Chrome/Edge em modo `--app`. Último recurso: Electron castLabs ECS com assinatura EVS. |
 | Spotify restringe ainda mais o modo de desenvolvimento ou o SDK | Perda de busca/biblioteca ou do player | Acompanhar o blog de desenvolvedores; o app oficial fica como reserva. |
+| **Widevine atualizado pelo Edge é recusado pelo Spotify** (17/11/2026) | O Edge baixa sozinho para o perfil um Widevine mais novo (4.10.3112.0) do que o embutido (4.10.3050.1). Com ele, `widevine-license` responde 403 sem corpo e o SDK pula faixas ("pula 5 músicas"). Primeiro suspeitamos de limite de taxa, mas o open.spotify.com tocava e a Web API seguia OK. | **Resolvido:** antes de abrir o Edge, o app apaga `<perfil>\WidevineCdm` e cria um ARQUIVO vazio com esse nome; o component updater não instala e o Edge usa o embutido (teste: 7 licenças 200, 0 × 403, 0 erros). Não usar `--disable-component-update`: ele desliga o Widevine inteiro (`initialization_error`). Quando o Edge atualizar o embutido, conferir de novo. Mesmo assim, testes de reprodução econômicos. |
 | Termos de desenvolvedor: "modificar/alterar" e "capturar" o stream | App de desenvolvedor suspenso | Uso pessoal, nada gravado, nada distribuído. Risco baixo, mas não zero. |
 | O roteamento por app é por executável (`msedge.exe`) | Se o usuário abrir o Edge para navegar, esse áudio também passa pelo DSP | Aceito (o usuário usa o Opera). Alternativas se incomodar: `setSinkId` injetado no iframe do SDK via CDP, ou Chrome `--app`. |
 | ~~Clock do VB-CABLE diferente do da placa~~ | ~~Estalos periódicos~~ | **Resolvido no Spike B:** rate adjust + AsyncSinc mantém 0 underrun com música (fator 0,99975–1,00008). |
@@ -380,5 +400,10 @@ Fontes: [neutroncode.com/apps/player](https://neutroncode.com/apps/player),
 | 2026-11-17 | Spike C aprovado: OAuth PKCE, refresh e Web API. | 11/11 chamadas OK. Busca limitada a 10 por página (`limit=20` → 400), `offset` pagina. Itens de playlist seguida (não própria) vieram normalmente. Python precisa do `truststore` (CA "Certainly" do accounts.spotify.com). |
 | 2026-11-17 | **Player do SDK no Edge `--app`** (antes Chrome). | Pedido do usuário: o Edge existe em todo Windows. Licença 200 em todos os pedidos, 10 min sem erro. |
 | 2026-11-17 | **Spike B aprovado; Fase 0 concluída.** `chunksize` 1024 / `target_level` 1024; WebSocket 0,1–1,5 ms; 0 clipping; troca de saída transparente com `device: null`. RAM: CamillaDSP 5 MB, Edge 444 MB. | Medido em 10 min cronometrados com música, pause, troca de dispositivo e de saída. |
+| 2026-11-17 | Edge do player com `--disable-gpu`, serviços extras desligados e `--disable-site-isolation-trials`. | 403 → 213 MB. A GPU sozinha era 161 MB (a janela não tem vídeo). Sem isolamento é aceitável porque o perfil só abre a página local com o iframe do Spotify. |
+| 2026-11-17 | **Fase 1 concluída.** Edge do player fora da tela + flags anti-oclusão; Job Object (KILL_ON_JOB_CLOSE) prende o Edge ao app; controle da reprodução pela Web API com `device_id`. RAM total 373 MB. | Sem as flags anti-oclusão o SDK não toca com a janela fora da tela. |
+| 2026-11-17 | **Fase 2 concluída.** Volume do app = volume principal do CamillaDSP; efeitos do Neutron implementados (exceto os opcionais da Fase 4). RAM 395 MB. | Critérios testados pelo usuário; configs validadas pelo CamillaDSP. |
+| 2026-11-17 | Janela do Edge do player sem botão na barra de tarefas (WS_EX_TOOLWINDOW). | O usuário via dois ícones (Spotron + globo do Edge). |
+| 2026-11-17 | VB-CABLE continua obrigatório. | O áudio é DRM e sai do Edge direto para um dispositivo: sem cabo não há onde inserir o DSP. Captura por processo tocaria o som em dobro; processar na página não funciona com EME; driver próprio exige assinatura. Facilitar depois: detectar o cabo e rotear o Edge sozinho (interface não documentada IAudioPolicyConfigFactory). |
 | 2026-11-17 | Efeitos do Neutron entram no plano (Fase 2, alguns na 4), incluindo o Ambiophonic R.A.C.E. pedido como "AmbioRace". Pitch/tempo fica fora. | Pedido do usuário. R.A.C.E. vira FIR truncado (o CamillaDSP não tem realimentação no pipeline). |
 | 2026-11-17 | Deezer (pleezer) considerado e deixado como alternativa. | O usuário prefere ficar no Spotify; o Deezer volta à mesa se o Spike A falhar sem plano B viável. |

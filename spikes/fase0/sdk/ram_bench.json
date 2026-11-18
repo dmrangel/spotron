@@ -1,0 +1,133 @@
+[
+  {
+    "config": "base",
+    "flags": "",
+    "transfer": 204,
+    "tocando": true,
+    "avanço_s": 25.4,
+    "processos": 10,
+    "privada_MB": 403,
+    "ws_MB": 710,
+    "detalhe": {
+      "gpu-process": 161,
+      "utility:CdmServiceBroker": 68,
+      "browser": 60,
+      "renderer": 19,
+      "utility:NetworkService": 13,
+      "utility:AudioService": 8,
+      "utility:StorageService": 7,
+      "crashpad-handler": 4
+    },
+    "playback_error": 0,
+    "outros_erros": 0
+  },
+  {
+    "config": "gpu",
+    "flags": "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer",
+    "transfer": 204,
+    "tocando": true,
+    "avanço_s": 25.3,
+    "processos": 10,
+    "privada_MB": 256,
+    "ws_MB": 591,
+    "detalhe": {
+      "utility:CdmServiceBroker": 68,
+      "browser": 59,
+      "renderer": 19,
+      "gpu-process": 14,
+      "utility:NetworkService": 14,
+      "utility:AudioService": 8,
+      "utility:StorageService": 7,
+      "crashpad-handler": 3
+    },
+    "playback_error": 0,
+    "outros_erros": 0
+  },
+  {
+    "config": "gpu+lean",
+    "flags": "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-extensions --disable-sync --disable-default-apps --disable-breakpad --no-pings --disable-features=Translate,msEdgeShopping,msWalletCheckout,msEdgeSidebarV2,msEdgeCollections,msEdgeFeaturesSearchIndexer",
+    "transfer": 204,
+    "tocando": false,
+    "avanço_s": -183.1,
+    "processos": 10,
+    "privada_MB": 258,
+    "ws_MB": 597,
+    "detalhe": {
+      "utility:CdmServiceBroker": 68,
+      "browser": 58,
+      "renderer": 16,
+      "gpu-process": 14,
+      "utility:NetworkService": 13,
+      "utility:AudioService": 8,
+      "utility:StorageService": 7,
+      "crashpad-handler": 3
+    },
+    "playback_error": 0,
+    "outros_erros": 0
+  },
+  {
+    "config": "gpu+lean+1rend",
+    "flags": "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-extensions --disable-sync --disable-default-apps --disable-breakpad --no-pings --renderer-process-limit=1 --disable-features=Translate,msEdgeShopping,msWalletCheckout,msEdgeSidebarV2,msEdgeCollections,msEdgeFeaturesSearchIndexer",
+    "transfer": 204,
+    "tocando": false,
+    "avanço_s": 0.0,
+    "processos": 8,
+    "privada_MB": 203,
+    "ws_MB": 479,
+    "detalhe": {
+      "utility:CdmServiceBroker": 67,
+      "browser": 44,
+      "renderer": 25,
+      "gpu-process": 14,
+      "utility:NetworkService": 13,
+      "utility:StorageService": 7,
+      "crashpad-handler": 4
+    },
+    "playback_error": 0,
+    "outros_erros": 0
+  },
+  {
+    "config": "gpu+lean+noiso",
+    "flags": "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-extensions --disable-sync --disable-default-apps --disable-breakpad --no-pings --disable-site-isolation-trials --disable-features=Translate,msEdgeShopping,msWalletCheckout,msEdgeSidebarV2,msEdgeCollections,msEdgeFeaturesSearchIndexer,IsolateOrigins,site-per-process",
+    "transfer": 204,
+    "tocando": true,
+    "avanço_s": 25.3,
+    "processos": 8,
+    "privada_MB": 213,
+    "ws_MB": 504,
+    "detalhe": {
+      "utility:CdmServiceBroker": 68,
+      "browser": 58,
+      "renderer": 40,
+      "gpu-process": 15,
+      "utility:NetworkService": 13,
+      "utility:AudioService": 8,
+      "utility:StorageService": 7,
+      "crashpad-handler": 3
+    },
+    "playback_error": 0,
+    "outros_erros": 0
+  },
+  {
+    "config": "tudo",
+    "flags": "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-extensions --disable-sync --disable-default-apps --disable-breakpad --no-pings --renderer-process-limit=1 --disable-site-isolation-trials --js-flags=--max-old-space-size=96 --disable-features=Translate,msEdgeShopping,msWalletCheckout,msEdgeSidebarV2,msEdgeCollections,msEdgeFeaturesSearchIndexer,IsolateOrigins,site-per-process",
+    "transfer": 204,
+    "tocando": true,
+    "avanço_s": 25.2,
+    "processos": 8,
+    "privada_MB": 211,
+    "ws_MB": 503,
+    "detalhe": {
+      "utility:CdmServiceBroker": 69,
+      "browser": 56,
+      "renderer": 39,
+      "gpu-process": 14,
+      "utility:NetworkService": 13,
+      "utility:AudioService": 8,
+      "utility:StorageService": 7,
+      "crashpad-handler": 3
+    },
+    "playback_error": 0,
+    "outros_erros": 0
+  }
+]

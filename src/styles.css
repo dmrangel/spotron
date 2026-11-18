@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@import "./themes/modrinth-dark.css";
+@import "./tokens.css";
+
+/* Expõe os tokens do app como utilitários do Tailwind: bg-app-card, text-app-text, rounded-app... */
+@theme inline {
+  --color-app-bg: var(--app-bg);
+  --color-app-panel: var(--app-panel);
+  --color-app-card: var(--app-card);
+  --color-app-card-raised: var(--app-card-raised);
+  --color-app-border: var(--app-border);
+  --color-app-text-strong: var(--app-text-strong);
+  --color-app-text: var(--app-text);
+  --color-app-text-muted: var(--app-text-muted);
+  --color-app-accent: var(--app-accent);
+  --color-app-accent-soft: var(--app-accent-soft);
+  --color-app-danger: var(--app-danger);
+  --radius-app-sm: var(--app-radius-sm);
+  --radius-app: var(--app-radius);
+  --radius-app-lg: var(--app-radius-lg);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: system-ui, "Segoe UI", sans-serif;
+  user-select: none;
+}
