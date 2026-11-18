@@ -294,11 +294,13 @@ Cada fase só começa quando a anterior cumpre os critérios de aceite.
 7. Proteção contra clipping: limiter no fim da cadeia, ligado por padrão.
 8. Reiniciar o CamillaDSP quando o dispositivo de saída mudar (fone conectado/desconectado).
 
-**Critérios de aceite:**
-- [ ] Mudar uma banda na UI altera o som em < 100 ms, sem cortes.
-- [ ] Importar um preset AutoEQ real funciona.
-- [ ] Fechar o app não deixa o `camilladsp.exe` órfão.
-- [ ] Trocar o fone não deixa o app mudo.
+**Critérios de aceite** (17/11/2026, testados com o Opera tocando no "CABLE Input", porque o servidor de licença estava recusando o nosso player; ver Riscos):
+- [x] Mudar uma banda na UI altera o som em < 100 ms, sem cortes: `SetConfigJson` com a config inteira leva **0,7 ms** (mediana; máx. 1,3 ms) e vale no bloco seguinte (~21 ms). Usuário confirmou o EQ funcionando; 0 amostras clipadas, carga ~0,04 %.
+- [x] Importar um preset AutoEQ real funciona: `ParametricEQ.txt` real do Sennheiser HD 650 (AutoEq/oratory1990) importado e validado pelo `camilladsp -c` em teste automático (`src-tauri/src/dsp/testdata/`).
+- [x] Fechar o app não deixa o `camilladsp.exe` órfão: app morto à força → 0 `camilladsp.exe` e 0 Edge do player (Job Object); ao reabrir, sobe exatamente 1.
+- [ ] Trocar o fone não deixa o app mudo: a config usa `device: null`, que acompanhou a troca no Spike B; falta repetir com o sidecar do app (o supervisor reinicia o CamillaDSP se ele cair).
+- [ ] Efeitos da seção "Efeitos de DSP" (crossfeed, R.A.C.E., loudness, delay, proteção, fase, balanço/mono) e volume no CamillaDSP: **ainda não implementados**.
+- [ ] Retestar o player do Spotron depois da pausa no servidor de licença.
 
 ### Efeitos de DSP (paridade com o Neutron)
 

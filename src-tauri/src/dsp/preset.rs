@@ -287,7 +287,13 @@ mod tests {
         ] {
             p.filters.push(Band { kind, freq: 1000.0, gain_db: gain, q: 0.7, enabled: true });
         }
-        p.correction = Some(parse_autoeq("t", AUTOEQ).unwrap());
+        // Arquivo real do AutoEQ (HD 650, oratory1990): 10 filtros, preamp -6.1 dB.
+        let real = parse_autoeq("HD 650", include_str!("testdata/Sennheiser HD 650 ParametricEQ.txt")).unwrap();
+        assert_eq!(real.filters.len(), 10);
+        assert_eq!(real.preamp_db, -6.1);
+        assert_eq!(real.filters[0].kind, FilterType::Lowshelf);
+        assert_eq!(real.filters[5].kind, FilterType::Highshelf);
+        p.correction = Some(real);
         let mut nada = Preset::default();
         nada.limiter.enabled = false;
         for (i, cfg) in [to_camilla(&p, &Devices::default(), true), to_camilla(&nada, &Devices::default(), true)].iter().enumerate() {
