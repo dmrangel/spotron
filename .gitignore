@@ -1,0 +1,22 @@
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# Node
+node_modules/
+dist/
+
+# Spike logs
+spikes/**/*.log
+
+# Binários baixados (não versionar)
+*.exe
+
+# Python
+__pycache__/
+
+# Python venv
+.venv/
+
+# Gerado pelo tauri-build
+spikes/**/gen/

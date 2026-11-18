@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Spotron Fase0 - Spike A</title>
+<style>
+  /* Spike descartável: só variáveis, sem cores fixas espalhadas. */
+  :root { --app-bg: #16181c; --app-card: #26292f; --app-text: #b0bac5; --app-text-strong: #fff;
+          --app-accent: #1bd96a; --app-error: #ff496e; }
+  body { margin: 0; padding: 16px; font: 14px/1.4 system-ui, sans-serif; background: var(--app-bg); color: var(--app-text); }
+  h1 { font-size: 18px; color: var(--app-text-strong); margin: 0 0 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  button { background: var(--app-card); color: var(--app-text-strong); border: 1px solid var(--app-text);
+           border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  .card { background: var(--app-card); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  .ok { color: var(--app-accent); } .err { color: var(--app-error); }
+  #log { height: 380px; overflow: auto; font: 12px/1.35 Consolas, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Spike A: Web Playback SDK no WebView2</h1>
+
+<div class="card">
+  <div>Widevine: <b id="drm">verificando...</b></div>
+  <div>Dispositivo: <b id="dev">não conectado</b></div>
+  <div>Tocando: <b id="track">-</b></div>
+  <div>Tempo tocando sem erro: <b id="elapsed">0:00</b> &middot; erros de reprodução: <b id="errors">0</b></div>
+</div>
+
+<div class="row">
+  <button id="start">1. Iniciar player</button>
+  <button id="transfer" disabled>2. Transferir para cá</button>
+  <button id="toggle" disabled>Play/Pause</button>
+  <button id="prev" disabled>Anterior</button>
+  <button id="next" disabled>Próxima</button>
+  <button id="seek" disabled>Seek +30 s</button>
+</div>
+
+<div class="card" id="log"></div>
+
+<script>
+// Dentro do Tauri usa os comandos do backend; num navegador (plano B, browser_serve.py)
+// usa o servidor local em 127.0.0.1:8890 (GET /token, POST /log).
+const invoke = window.__TAURI__
+  ? window.__TAURI__.core.invoke
+  : async (cmd, args) => {
+      if (cmd === "get_token") {
+        const r = await fetch("/token");
+        if (!r.ok) throw await r.text();
+        return r.text();
+      }
+      if (cmd === "log") {
+        await fetch("/log", { method: "POST", body: args.msg });
+      }
+    };
+const $ = (id) => document.getElementById(id);
+const DEVICE_NAME = "Spotron Fase0";
+
+let player = null, deviceId = null, lastState = null, playingSecs = 0, errorCount = 0, lastTrack = null;
+
+function log(msg, cls) {
+  const line = `${new Date().toLocaleTimeString()}  ${msg}`;
+  const el = document.createElement("div");
+  if (cls) el.className = cls;
+  el.textContent = line;
+  $("log").appendChild(el);
+  $("log").scrollTop = $("log").scrollHeight;
+  invoke("log", { msg }).catch(() => {});
+}
+
+// 1) Widevine disponível no WebView2?
+async function checkDrm() {
+  const configs = [{
+    initDataTypes: ["cenc"],
+    audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"', robustness: "SW_SECURE_CRYPTO" }],
+  }];
+  try {
+    const access = await navigator.requestMediaKeySystemAccess("com.widevine.alpha", configs);
+    $("drm").textContent = `OK (${access.keySystem})`;
+    $("drm").className = "ok";
+    log(`DRM OK: ${access.keySystem} ${JSON.stringify(access.getConfiguration().audioCapabilities)}`, "ok");
+  } catch (e) {
+    $("drm").textContent = `FALHOU: ${e.name}: ${e.message}`;
+    $("drm").className = "err";
+    log(`DRM FALHOU: ${e.name}: ${e.message}`, "err");
+  }
+  log(`User agent: ${navigator.userAgent}`);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// O SDK pede o token ao conectar e a cada ~1 h (inclusive quando a reprodução é trazida de volta
+// pelo celular). Uma falha passageira (servidor reiniciando, rede) não pode derrubar o player:
+// tenta de novo com espera crescente.
+async function getToken() {
+  let wait = 1000;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await invoke("get_token");
+    } catch (e) {
+      log(`token (tentativa ${attempt}): ${e}`, "err");
+      if (attempt >= 6) throw e;
+      await sleep(wait);
+      wait = Math.min(wait * 2, 15000);
+    }
+  }
+}
+
+function loadSdk() {
+  if (window.Spotify || document.getElementById("sdk")) return;
+  const s = document.createElement("script");
+  s.id = "sdk";
+  s.src = "https://sdk.scdn.co/spotify-player.js";
+  s.onerror = () => {
+    log("falha ao carregar sdk.scdn.co/spotify-player.js; nova tentativa em 5 s", "err");
+    s.remove();
+    setTimeout(loadSdk, 5000);
+  };
+  document.body.appendChild(s);
+}
+
+let reconnecting = false;
+async function reconnect(reason) {
+  if (!player || reconnecting) return;
+  reconnecting = true;
+  log(`reconectando (${reason})`);
+  try {
+    player.disconnect();
+    await sleep(2000);
+    const ok = await player.connect();
+    log(`connect(): ${ok}`, ok ? "ok" : "err");
+  } finally {
+    reconnecting = false;
+  }
+}
+
+// 2) Player do SDK
+window.onSpotifyWebPlaybackSDKReady = () => {
+  log("SDK carregado; criando o player");
+  player = new Spotify.Player({
+    name: DEVICE_NAME,
+    getOAuthToken: (cb) => getToken().then(cb).catch((e) => log(`token: ${e}`, "err")),
+    volume: 0.8,
+  });
+
+  player.addListener("ready", ({ device_id }) => {
+    deviceId = device_id;
+    $("dev").textContent = `${DEVICE_NAME} (${device_id})`;
+    $("dev").className = "ok";
+    log(`ready: device_id=${device_id}`, "ok");
+    for (const b of ["transfer", "toggle", "prev", "next", "seek"]) $(b).disabled = false;
+  });
+  player.addListener("not_ready", ({ device_id }) => {
+    log(`not_ready: ${device_id}`, "err");
+    $("dev").textContent = "desconectado, reconectando...";
+    $("dev").className = "err";
+    setTimeout(() => reconnect("not_ready"), 3000);
+  });
+  for (const ev of ["initialization_error", "authentication_error", "account_error", "playback_error"]) {
+    player.addListener(ev, ({ message }) => {
+      if (ev === "playback_error") { errorCount++; $("errors").textContent = errorCount; }
+      log(`${ev}: ${message}`, "err");
+      // Token expirado/recusado: reconectar força o SDK a pedir um token novo.
+      if (ev === "authentication_error") setTimeout(() => reconnect("authentication_error"), 5000);
+    });
+  }
+  player.addListener("autoplay_failed", () => log("autoplay_failed: clique em Play/Pause", "err"));
+  player.addListener("player_state_changed", (state) => {
+    lastState = state;
+    if (!state) { log("state: null (dispositivo deixou de ser o ativo)"); return; }
+    const t = state.track_window.current_track;
+    const name = t ? `${t.name} - ${t.artists.map((a) => a.name).join(", ")}` : "-";
+    $("track").textContent = state.paused ? `${name} (pausado)` : name;
+    if (t && t.uri !== lastTrack) {
+      lastTrack = t.uri;
+      log(`faixa: ${name} [${t.uri}]`);
+    }
+  });
+
+  player.connect().then((ok) => log(`connect(): ${ok}`, ok ? "ok" : "err"));
+};
+
+$("start").onclick = () => {
+  $("start").disabled = true;
+  if (player) player.activateElement();
+  loadSdk();
+};
+
+// Fora do Tauri (Chrome --app aberto pelo player.py com --autoplay-policy=no-user-gesture-required)
+// o player sobe sozinho: o dispositivo "Spotron Fase0" fica disponível no celular sem clicar em nada.
+if (!window.__TAURI__) {
+  $("start").disabled = true;
+  loadSdk();
+}
+
+$("transfer").onclick = async () => {
+  try {
+    const token = await getToken();
+    const r = await fetch("https://api.spotify.com/v1/me/player", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ device_ids: [deviceId], play: true }),
+    });
+    log(`PUT /me/player -> HTTP ${r.status}`, r.ok ? "ok" : "err");
+  } catch (e) { log(`transferir: ${e}`, "err"); }
+};
+$("toggle").onclick = () => { player.activateElement(); player.togglePlay(); };
+$("prev").onclick = () => player.previousTrack();
+$("next").onclick = () => player.nextTrack();
+$("seek").onclick = async () => {
+  const st = await player.getCurrentState();
+  if (st) { await player.seek(st.position + 30000); log(`seek: ${Math.round(st.position / 1000) + 30} s`); }
+};
+
+// 3) Contador de tempo tocando e log periódico (critério: 10 min sem erro de licença)
+setInterval(() => {
+  if (lastState && !lastState.paused) {
+    playingSecs++;
+    const m = Math.floor(playingSecs / 60), s = String(playingSecs % 60).padStart(2, "0");
+    $("elapsed").textContent = `${m}:${s}`;
+    if (playingSecs % 60 === 0) {
+      player.getCurrentState().then((st) => {
+        if (st) log(`tocando há ${m} min; posição ${Math.round(st.position / 1000)} s; erros=${errorCount}`);
+      });
+    }
+  }
+}, 1000);
+
+checkDrm();
+</script>
+</body>
+</html>

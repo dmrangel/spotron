@@ -1,0 +1,63 @@
+---
+# Fase 0: librespot (stdout, S16LE 44.1 kHz 2ch) -> CamillaDSP v4.1.x -> WASAPI shared.
+# Sintaxe conferida no código-fonte do CamillaDSP v4.1.3 (src/config/mod.rs, README.md).
+#
+# ATENÇÃO (WASAPI shared): `samplerate` precisa ser IGUAL ao "Formato padrão" do dispositivo
+# no Painel de Som do Windows (Propriedades > Avançado). O librespot só gera 44100 Hz.
+# - Se o dispositivo estiver em 48000 Hz: deixe como está (resampler 44100 -> 48000).
+# - Se estiver em 44100 Hz: troque `samplerate` para 44100 e apague `resampler` e `capture_samplerate`.
+title: "Fase 0 - spike"
+devices:
+  samplerate: 48000
+  capture_samplerate: 44100
+  resampler:
+    type: Synchronous
+  chunksize: 1024
+  capture:
+    type: Stdin
+    channels: 2
+    format: S16_LE
+  playback:
+    type: Wasapi
+    channels: 2
+    device: null        # null = dispositivo padrão do Windows
+    format: F32         # shared mode é sempre F32
+    exclusive: false
+
+filters:
+  preamp:
+    type: Gain
+    parameters:
+      gain: -6.0        # headroom para o EQ não clipar
+      scale: dB
+  # Filtro "óbvio" do critério de aceite: passa-baixa em 500 Hz.
+  # Para A/B, use bypass via WebSocket (ws_test.py) ou comente a linha no pipeline.
+  lowpass_test:
+    type: Biquad
+    parameters:
+      type: Lowpass
+      freq: 500
+      q: 0.707
+  # Banda que o ws_test.py altera em tempo real.
+  peq_test:
+    type: Biquad
+    parameters:
+      type: Peaking
+      freq: 1000
+      gain: 0.0
+      q: 1.0
+  limiter:
+    type: Limiter
+    parameters:
+      clip_limit: -0.1
+      soft_clip: false
+
+pipeline:
+  - type: Filter
+    description: "EQ de teste"
+    channels: [0, 1]
+    names:
+      - preamp
+      - lowpass_test
+      - peq_test
+      - limiter
